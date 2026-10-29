@@ -1,0 +1,11 @@
+{
+  "backend": "mock_aicpu",
+  "target": {
+    "name": "arch92-example-not-confirmed-mk001",
+    "soc_version": "Ascend960",
+    "kernel_arch": "arch92",
+    "aic_core_num": 80,
+    "aiv_core_num": 80
+  },
+  "cache": {"enabled": true, "max_entries": 8}
+}

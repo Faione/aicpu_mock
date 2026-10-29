@@ -1,0 +1,22 @@
+{
+  "protocol_version": 1,
+  "execution_mode": "one_shot",
+  "num_heads_q": 64,
+  "num_heads_kv": 8,
+  "head_dim": 128,
+  "head_dim_v": 128,
+  "cu_seqlens_q": [0, 128],
+  "seqused_q": [128],
+  "seqused_kv": [1024],
+  "max_seqlen_q": 128,
+  "max_seqlen_kv": 1024,
+  "quant_mode": 1,
+  "mask_mode": 3,
+  "win_left": -1,
+  "win_right": -1,
+  "layout_q": "TND",
+  "layout_q_descale": "TND",
+  "layout_kv": "PA_BNBD",
+  "layout_out": "TND",
+  "is_grad_enabled": false
+}

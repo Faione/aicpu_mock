@@ -1,0 +1,14 @@
+{
+  "protocol_version": 1,
+  "execution_mode": "one_shot",
+  "num_heads_q": 64,
+  "num_heads_kv": 8,
+  "head_dim": 128,
+  "cu_seqlens_q": [0, 512, 1024],
+  "seqused_q": [512, 512],
+  "seqused_kv": [65536, 65536],
+  "max_seqlen_q": 512,
+  "max_seqlen_kv": 65536,
+  "layout_kv": "PA_BNBD",
+  "mask_mode": 3
+}

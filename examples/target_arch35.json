@@ -1,0 +1,11 @@
+{
+  "backend": "mock_aicpu",
+  "target": {
+    "name": "arch35-example",
+    "soc_version": "Ascend910_9599",
+    "kernel_arch": "arch35",
+    "aic_core_num": 36,
+    "aiv_core_num": 72
+  },
+  "cache": {"enabled": true, "max_entries": 8}
+}

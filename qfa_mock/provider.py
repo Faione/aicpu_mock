@@ -104,6 +104,7 @@ class MetadataProvider:
     @staticmethod
     def _log(result):
         s = result.summary
-        logging.getLogger("qfa_mock").info("mock_aicpu target=%s request=%s algorithm=%s cache_hit=%s header=%s AIC=%s AIV=%s used_words=%s",
+        logging.getLogger("qfa_mock").info("mock_aicpu target=%s request=%s algorithm=%s cache_hit=%s header=%s AIC=%s AIV=%s used_words=%s plan=%s source=%s",
                                            s["target"], s["request_digest"], ALGORITHM_VERSION, result.cache_hit,
-                                           s["header"], s["active_aic"], s["active_aiv"], s["used_words"])
+                                           s["header"], s["active_aic"], s["active_aiv"], s["used_words"],
+                                           s["metadata_digest"], s["source_digest"])

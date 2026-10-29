@@ -17,7 +17,9 @@
 | cache.enabled | 可选，布尔值，默认 true |
 | cache.max_entries | 可选，整数 1–128，默认 8；仅进程内缓存，无持久化缓存 |
 
-CLI 是专用 mock 工具，缺配置即报错。TTK 插件没有配置时才委托原 native 流程。
+CLI 与外置 TTK 插件均为专用 mock 入口，缺配置即报错。native 通过选择原 assets 的插件路径启动，不依据配置缺失自动切换。
+
+外置 worker 首次调用固定解析后的仓库路径、规范化配置、helper 路径和构建身份。字段顺序/JSON 排版变化或相同内容迁移配置文件不改变身份；语义变化报 `WORKER_CONFIG_CHANGED`。支持模块和原实现加载时检查绝对来源路径、签名和源码摘要；已加载源文件改变后要求重启 worker。设备执行另需 [平台证据](PLATFORM_EVIDENCE.md)，不改变 CPU helper 的输入契约。
 
 ## 请求
 
@@ -87,6 +89,8 @@ CLI 非零退出，stderr 输出单个 JSON 错误对象：
 ```
 
 主要错误码：`MISSING_FIELD`、`INVALID_INPUT`、`UNSUPPORTED_FIELD`、`UNSUPPORTED_REQUEST`、`UNSUPPORTED_TARGET`、`TARGET_MISMATCH`、`REQUEST_MISMATCH`、`CAPACITY_EXCEEDED`、`HELPER_NOT_BUILT`、`STALE_BUILD`、`HELPER_FAILED`、`HELPER_TIMEOUT`、`INVALID_METADATA`、`COVERAGE_FAILED`、`GOLDEN_FAILED`。IO/JSON 格式错误由 CLI 输出 `IO_OR_FORMAT_ERROR`。库接口抛出 `MockError`（含 `.code`），IO 错误保留 Python 异常。
+
+接入层另有 `MODULE_SOURCE_CONFLICT`、`SOURCE_CHANGED`、`UPSTREAM_INCOMPATIBLE`、`WORKER_CONFIG_CHANGED`、`TARGET_UNVERIFIED`、`PREPROCESS_FAILED`、`RESTORE_FAILED`。结构化日志包括源路径/摘要、阶段、请求/计划摘要、worker 和恢复结果。golden 的内部异常桥接不逃到 TTK：普通数值异常转换为带原始原因链的 `MockError`；`KeyboardInterrupt`、`SystemExit` 不转换。
 
 失败不提交真实 qfa_metadata，不使用固定样例替代，不回退全局参考计算。
 

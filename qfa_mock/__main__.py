@@ -31,6 +31,9 @@ def main():
     validate = commands.add_parser("validate", help="revalidate an existing metadata bundle")
     validate.add_argument("--repo", required=True)
     validate.add_argument("--bundle", required=True)
+    launch = commands.add_parser("launch", help="launch TTK with bound platform/build evidence")
+    launch.add_argument("--evidence", required=True)
+    launch.add_argument("argv", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     try:
@@ -43,6 +46,10 @@ def main():
             result = provider.generate(load_json(args.request))
             result.write(args.output)
             result = result.summary
+        elif args.command == "launch":
+            from .platform_check import launch
+            command = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
+            return launch(args.evidence, command)
         else:
             bundle = Path(args.bundle)
             config = normalize_config(load_json(bundle / "config.json"))

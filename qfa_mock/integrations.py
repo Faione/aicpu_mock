@@ -4,31 +4,75 @@ import inspect
 import os
 from pathlib import Path
 import threading
+from contextlib import ExitStack, contextmanager
 from unittest.mock import patch
 
 from .build import ROOT
-from .model import MockError, canonical, effective_lengths, fail, load_json, normalize_request
+from .model import MockError, canonical, effective_lengths, fail, load_json, normalize_config, normalize_request
 from .provider import MetadataProvider
+from .build import verify_build
+from . import runtime_loader
+from .telemetry import event, phase
 
 
 _providers = {}
 _provider_lock = threading.Lock()
-_patch_lock = threading.RLock()
 
 
-def get_provider():
+def _after_fork():
+    global _provider_lock
+    _providers.clear()
+    _provider_lock = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_after_fork)
+
+
+def get_provider(expected_repo=None):
     path = os.environ.get("QFA_METADATA_CONFIG")
     repo = os.environ.get("QFA_REPO")
     helper = os.environ.get("QFA_MOCK_HELPER", str(ROOT / "build/metadata_helper"))
     if not path or not repo:
         fail("MISSING_CONFIG", "TTK adapter requires QFA_METADATA_CONFIG and QFA_REPO")
-    config = load_json(path)
-    key = (os.getpid(), str(Path(repo).resolve()), str(Path(helper).resolve()), canonical(config))
+    repo, helper = Path(repo).resolve(), Path(helper).resolve()
+    if expected_repo is not None and repo != Path(expected_repo).resolve():
+        fail("WORKER_CONFIG_CHANGED", f"registered checkout is {expected_repo}, QFA_REPO is {repo}")
+    config = normalize_config(load_json(path))
+    identity = canonical({"repo": str(repo), "helper": str(helper), "config": config})
+    pid = os.getpid()
     with _provider_lock:
-        if key not in _providers:
-            _providers.clear()
-            _providers[key] = MetadataProvider(config, repo, helper)
-        return _providers[key]
+        state = _providers.get(pid)
+        if state is not None and state[0] != identity:
+            fail("WORKER_CONFIG_CHANGED", "worker checkout, normalized configuration or helper path changed; restart the worker")
+        manifest = verify_build(helper, repo)
+        build_identity = canonical(manifest)
+        if state is not None:
+            if state[1] != build_identity:
+                fail("STALE_BUILD", "worker build/source identity changed; restart the worker")
+            event("worker_reused", config_path=str(Path(path).resolve()), source_digest=manifest["source_digest"])
+            return state[2]
+        provider = MetadataProvider(config, repo, helper)
+        _providers[pid] = (identity, build_identity, provider)
+        event("worker_initialized", repo=str(repo), config_path=str(Path(path).resolve()),
+              config=config, helper=str(helper), build=manifest)
+        return provider
+
+
+@contextmanager
+def _replacements(module, values, hook):
+    originals = {name: getattr(module, name) for name in values}
+    try:
+        with ExitStack() as stack:
+            for name, value in values.items():
+                stack.enter_context(patch.object(module, name, value))
+            event("replacements_installed", hook=hook, names=list(values))
+            yield
+    finally:
+        restored = all(getattr(module, name) is value for name, value in originals.items())
+        event("replacements_restored", hook=hook, restored=restored, names=list(values))
+        if not restored:
+            fail("RESTORE_FAILED", f"{hook}: original function objects were not restored")
 
 
 def _small_list(value):
@@ -130,29 +174,20 @@ def decode_for_golden(result, request, module, q_lens, kv_lens):
     return module._decode_qfa_sections(words, q_lens, kv_lens)
 
 
-def metadata_for_preprocess(arguments, request, provider, anchor):
-    import torch
-
+def metadata_for_preprocess(arguments, request, provider, anchor, result=None):
     adapted = {**arguments, "protocol_version": 1, "execution_mode": "one_shot",
                "win_left": request["win_left"], "win_right": request["win_right"],
                "is_grad_enabled": False}
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
         adapted[name] = _small_list(adapted.get(name))
     assert_same_request(request, normalize_request(adapted))
-    npu = getattr(torch, "npu", None)
-    if npu is None or not hasattr(npu, "get_device_properties"):
-        fail("TARGET_UNVERIFIED", "device preprocessing requires runtime core information")
-    props = npu.get_device_properties(anchor.device)
-    actual = (int(props.cube_core_num), int(props.vector_core_num))
-    target = provider.config["target"]
-    expected = (target["aic_core_num"], target["aiv_core_num"])
-    if actual != expected:
-        fail("TARGET_MISMATCH", f"runtime AIC/AIV={actual}, configured={expected}")
-    if hasattr(npu, "get_soc_version"):
-        soc = str(npu.get_soc_version())
-        if soc != target["soc_version"]:
-            fail("TARGET_MISMATCH", f"runtime SoC={soc}, configured={target['soc_version']}")
-    return provider.generate(request).device_tensor(anchor)
+    result = provider.generate(request) if result is None else result
+    from .platform_check import check_device_target
+
+    with phase("platform_check", hook="npu_preprocess"):
+        check_device_target(provider, request, result, anchor)
+    with phase("device_write", hook="npu_preprocess"):
+        return result.device_tensor(anchor)
 
 
 class _SectionFailure(BaseException):
@@ -161,41 +196,73 @@ class _SectionFailure(BaseException):
 
 def run_golden(function, module, args, kwargs):
     provider = get_provider()
-    request, _ = request_from_call(function, args, kwargs, golden=True)
-    result = provider.generate(request)
-    # Read the original function under the same lock used for temporary replacement.
-    with _patch_lock:
+    with phase("parameter_binding", hook="golden"):
+        request, _ = request_from_call(function, args, kwargs, golden=True)
+    with phase("plan_generation", hook="golden"):
+        result = provider.generate(request)
+    with runtime_loader.CALL_LOCK:
         sectioned = module._cpu_mxfp8_golden_sectioned
-        called = [False]
+        state = {"plan_calls": 0, "decoded": False, "section_calls": 0, "section_success": False}
 
         def section_info(q_lens, kv_lens):
-            called[0] = True
-            return decode_for_golden(result, request, module, q_lens, kv_lens)
+            with phase("decode", hook="golden"):
+                state["plan_calls"] += 1
+                if state["plan_calls"] != 1:
+                    fail("GOLDEN_FAILED", "expected exactly one plan consumption")
+                decoded = decode_for_golden(result, request, module, q_lens, kv_lens)
+                if not decoded:
+                    fail("GOLDEN_FAILED", "decoder returned an empty plan")
+                state["decoded"] = True
+                return decoded
 
         def strict_sectioned(*inner_args, **inner_kwargs):
             try:
-                return sectioned(*inner_args, **inner_kwargs)
+                with phase("sectioned_compute", hook="golden"):
+                    state["section_calls"] += 1
+                    if state["section_calls"] != 1 or not state["decoded"]:
+                        fail("GOLDEN_FAILED", "expected one sectioned computation after decoding")
+                    output = sectioned(*inner_args, **inner_kwargs)
+                    state["section_success"] = True
+                    return output
             except Exception as error:
                 raise _SectionFailure(error) from error
 
-        with patch.object(module, "get_qfa_section_info", section_info), \
-                patch.object(module, "_cpu_mxfp8_golden_sectioned", strict_sectioned):
-            try:
+        try:
+            with _replacements(module, {"get_qfa_section_info": section_info,
+                                       "_cpu_mxfp8_golden_sectioned": strict_sectioned}, "golden"), \
+                    phase("golden_output", hook="golden"):
                 output = function(*args, **kwargs)
-            except _SectionFailure as error:
-                raise MockError("GOLDEN_FAILED", f"sectioned golden failed; fallback disabled: {error}") from error
-        if not called[0]:
-            fail("GOLDEN_FAILED", "golden did not consume the generated metadata")
+        except _SectionFailure as error:
+            cause = error.__cause__
+            converted = MockError("GOLDEN_FAILED", f"sectioned golden failed; fallback disabled: {cause}")
+            converted.stage = getattr(cause, "stage", "sectioned_compute")
+            raise converted from cause
+        if state != {"plan_calls": 1, "decoded": True, "section_calls": 1, "section_success": True}:
+            fail("GOLDEN_FAILED", f"golden did not complete the required sectioned path: {state}")
+        event("golden_accepted", request_digest=result.summary["request_digest"],
+              metadata_digest=result.summary["metadata_digest"], state=state)
         return output
 
 
 def run_preprocess(module, args, kwargs):
     provider = get_provider()
-    request, _ = request_from_call(module.run, args, kwargs)
-    provider.generate(request)  # Validate before entering the existing hook.
+    with phase("parameter_binding", hook="npu_preprocess"):
+        request, _ = request_from_call(module.run, args, kwargs)
+    with phase("plan_generation", hook="npu_preprocess"):
+        result = provider.generate(request)
+    calls = [0]
 
     def mock_metadata(arguments, anchor):
-        return metadata_for_preprocess(arguments, request, provider, anchor)
+        calls[0] += 1
+        if calls[0] != 1:
+            fail("PREPROCESS_FAILED", "expected exactly one metadata production")
+        return metadata_for_preprocess(arguments, request, provider, anchor, result=result)
 
-    with _patch_lock, patch.object(module, "run_metadata", mock_metadata):
-        return module.run(*args, **kwargs)
+    with runtime_loader.CALL_LOCK, _replacements(module, {"run_metadata": mock_metadata}, "npu_preprocess"), \
+            phase("slot_processing", hook="npu_preprocess"):
+        output = module.run(*args, **kwargs)
+    if calls[0] != 1:
+        fail("PREPROCESS_FAILED", "preprocess did not consume mock metadata")
+    event("preprocess_accepted", request_digest=result.summary["request_digest"],
+          metadata_digest=result.summary["metadata_digest"])
+    return output

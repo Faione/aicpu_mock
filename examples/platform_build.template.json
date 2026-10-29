@@ -1,0 +1,11 @@
+{
+  "qfa_binary_sha256": "<SHA256 of the actual qfa kernel binary>",
+  "soc_version": "<scheduling SoC confirmed from the actual build>",
+  "kernel_arch": "<arch92 or arch35 from compile records>",
+  "npu_arch": "<NpuArch code confirmed from the build and platform ini>",
+  "effective_aic_core_num": 80,
+  "effective_aiv_core_num": 80,
+  "core_limit_policy": "no_additional_limits",
+  "schedule_source_digest": "<matching helper build manifest source_digest>",
+  "algorithm_version": "qfa-host-v1"
+}

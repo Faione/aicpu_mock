@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import importlib.util
 import os
 from pathlib import Path
@@ -64,7 +65,10 @@ class PrototypeTests(unittest.TestCase):
     def test_baseline_matches_existing_binary_exactly(self):
         result = self.provider.generate(self.request)
         reference = REPO / "scratch/qfa-metadata-mock/arch92_80_80.bin"
-        self.assertEqual(result.data, reference.read_bytes())
+        self.assertEqual(hashlib.sha256(result.data).hexdigest(),
+                         "e504413ef5b29d24d6742f588d70fa20e4909814605d6f9455fec20096139c9f")
+        if reference.is_file():
+            self.assertEqual(result.data, reference.read_bytes())
         self.assertEqual(result.summary["header"][:6], [1, 0, 128, 256, 80, 80])
         self.assertEqual(result.summary["active_aic"], [64])
 
@@ -216,7 +220,7 @@ class PrototypeTests(unittest.TestCase):
         kwargs["seqused_q_values"] = [64]
         self.assert_error("REQUEST_MISMATCH", request_from_call, make_call(golden=True), args, kwargs, golden=True)
 
-    def test_device_adapter_copies_same_plan_and_rejects_core_mismatch(self):
+    def test_device_adapter_copies_same_plan_and_requires_platform_proof(self):
         args, kwargs = self.call_inputs()
         request, _ = request_from_call(make_call(), args, kwargs)
         arguments = {key: value for key, value in request.items()
@@ -226,11 +230,12 @@ class PrototypeTests(unittest.TestCase):
                                     SimpleNamespace(cube_core_num=80, vector_core_num=80)))
         result = SimpleNamespace(device_tensor=lambda anchor: (self.provider.generate(request).data, anchor.device))
         fake_provider = SimpleNamespace(config=self.provider.config, generate=lambda r: result)
-        with patch.dict("sys.modules", {"torch": fake_torch}):
+        with patch.dict("sys.modules", {"torch": fake_torch}), \
+                patch("qfa_mock.platform_check.check_device_target") as check:
             data, device = metadata_for_preprocess(arguments, request, fake_provider, args[0])
             self.assertEqual(data, self.provider.generate(request).data)
             self.assertEqual(device, "npu:0")
-            fake_torch.npu.get_device_properties = lambda device: SimpleNamespace(cube_core_num=36, vector_core_num=72)
+            check.side_effect = MockError("TARGET_MISMATCH", "injected conflicting platform proof")
             self.assert_error("TARGET_MISMATCH", metadata_for_preprocess, arguments, request, fake_provider, args[0])
 
     def test_original_assets_causal_mask_is_passed_through(self):
@@ -284,7 +289,7 @@ class PrototypeTests(unittest.TestCase):
             self.assertEqual(run_preprocess(module, args, kwargs), {"metadata": "mock plan"})
         self.assertIs(module.run_metadata, original)
 
-    def test_plugin_without_config_delegates_to_native(self):
+    def test_mock_plugin_without_config_fails_before_loading_native(self):
         with tempfile.TemporaryDirectory() as directory:
             spec_path = Path(directory) / "attention/quant_flash_attn/tests/assets/spec.py"
             spec_path.parent.mkdir(parents=True)
@@ -296,10 +301,11 @@ class PrototypeTests(unittest.TestCase):
             environment["QFA_REPO"] = directory
             spec = importlib.util.spec_from_file_location("test_qfa_plugin", ROOT / "ttk_plugin.py")
             module = importlib.util.module_from_spec(spec)
-            with patch.dict(os.environ, environment, clear=True), patch.dict("sys.modules"):
+            with patch.dict(os.environ, environment, clear=True), patch.dict("sys.modules"), \
+                    patch("qfa_mock.runtime_loader.load_original_spec", return_value=SimpleNamespace(QuantFlashAttnSpec=object)):
                 spec.loader.exec_module(module)
-                self.assertEqual(module.QuantFlashAttnMockSpec.golden(), "native golden")
-                self.assertEqual(module.QuantFlashAttnMockSpec.npu_preprocess(), "native preprocess")
+                self.assert_error("MISSING_CONFIG", module.QuantFlashAttnMockSpec.golden)
+                self.assert_error("MISSING_CONFIG", module.QuantFlashAttnMockSpec.npu_preprocess)
 
     def test_bundle_is_reproducible_and_never_overwrites(self):
         result = self.provider.generate(self.request)

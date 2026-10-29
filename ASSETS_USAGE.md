@@ -15,7 +15,7 @@ python3 -m unittest discover -s tests -v
 
 产物是 `build/metadata_helper` 和 `build/metadata_helper.json`（源码与二进制指纹）。只编译 Host C++，不编译 AICPU、不使用 Torch C++ 扩展。不要把本机编译的可执行文件直接搬到不同操作系统/架构；在目标测试机器重建。
 
-修改 helper 或调度源码后重新执行 build。生成计划时不会自动编译。当前回归测试还会读取上游 `scratch/qfa-metadata-mock/arch92_80_80.bin` 基线文件。
+修改 helper 或调度源码后重新执行 build。生成计划时不会自动编译。回归检查使用已记录的基线 SHA-256；旧 `arch92_80_80.bin` 存在时还会逐字节比较。完整原 Python 链路验收需安装 `requirements-cpu.txt`，并运行 `scripts/verify_cpu.py`，见 README。
 
 ## 2. 配置实际目标
 
@@ -44,9 +44,9 @@ python3 -m qfa_mock validate --repo "$QFA_REPO" --bundle out/first-plan
 
 ## 3. 用插件接入现有 assets
 
-首版推荐通过本仓库的 `ttk_plugin.py` 使用原 assets，**不需要修改原 assets 文件**。插件继承原 Spec，保留输入生成、compare 及原预处理中的 metadata 槽位回填逻辑。
+当前主方案通过本仓库的 `ttk_plugin.py` 使用原 assets，**不需要修改原 assets 文件**。插件继承原 Spec，保留输入生成、compare 及原预处理中的 metadata 槽位回填逻辑。目录命名与设计建议不同，但文件可以合并，公开入口就是这个 `.py` 文件。
 
-在已经能运行 QFA Eager 的 TTK 环境中，保留上述环境变量，然后运行：
+在已经能运行 QFA Eager 的 TTK 环境中，保留上述环境变量，准备与实际构建和启动绑定的平台证据。完整生成和启动命令见 [PLATFORM_EVIDENCE.md](PLATFORM_EVIDENCE.md)。最终 TTK argv 如下，必须通过 `qfa_mock launch` 绑定后执行：
 
 ```bash
 export SIM_SOC='<仿真器支持且与目标一致的实际SoC名称>'
@@ -55,12 +55,12 @@ cd /path/to/ops-test-kit
 python3 -m ttk e2e \
   --backend npusim \
   --sim-soc "$SIM_SOC" \
-  -i "$QFA_REPO/scratch/qfa-metadata-mock/qfa_mxfp8_lse.csv" \
+  -i "$QFA_MOCK_ROOT/examples/qfa_mxfp8_lse.csv" \
   --plugin "$QFA_MOCK_ROOT/ttk_plugin.py" \
   --golden-mode Enable
 ```
 
-此 CSV 是上游已有基线，需要存在于当前 ops-transformer checkout；也可以换成满足首版范围的自有 CSV。CLI 的 `examples/request.json` 用于独立生成测试，**TTK 不会读取这份请求**；插件从当前用例的真实调用提取参数。
+该 CSV 随本仓库提供，来自原型基线；也可换成满足首版范围的自有 CSV。CLI 的 `examples/request.json` 用于独立生成测试，**TTK 不会读取这份请求**；插件从当前用例的真实调用提取参数。
 
 两个入口的实际路径如下：
 
@@ -93,10 +93,12 @@ python3 -m ttk e2e \
 - mask_mode=0/3/5，窗口均为 -1。标准 mask=3 用例可沿用原输入生成器填充的 causal mask，`attn_mask_shape` 须与 Tensor shape 一致；不能绕过输入生成器传任意 mask。
 - 不支持 sinks、V-tail、反向、N2TGD/BN2SGD descale 或图模式。
 
-mock 不会修改 Runtime 核数或 qfa tiling。预处理会检查运行时核数，SoC 查询可用时也检查精确标识；编译架构仍需要按实际构建记录确认。
+mock 不会修改 Runtime 核数或 qfa tiling。预处理核对绑定的模型/平台/内核文件摘要、构建记录中的有效核数、架构及调度源码；可用时核对真实 tiling。普通设备属性仅校验容量，SoC 查询按有来源的类型化别名映射比较。查询不可用时仍可用有效离线证据完成预检；无证据则停止设备执行。首版不支持额外控核，不提供跳过校验开关。
 
 TTK 日志中查找 `mock_aicpu`，可看到目标、请求摘要、Header、活跃 AIC/AIV 和 cache_hit。相同输入的 golden 与预处理应使用相同摘要。错误会使当前用例失败，不回退真实 qfa_metadata 或全局参考计算。
 
-取消 mock 时使用原 Spec，或取消设置 `QFA_METADATA_CONFIG`；本插件未启用配置时会委托原 native 方法。
+取消 mock 时，将 `--plugin` 改为原 `$QFA_REPO/attention/quant_flash_attn/tests/assets`。选中外置 mock 插件时，取消设置 `QFA_METADATA_CONFIG` 会立即报错，不会恢复 native。
 
-当前只在 CPU 上完成原型验证及入口替身测试。上面的真实 TTK/仿真命令尚未在本机执行，设备对拍和 Out/LSE 精度仍需在目标环境验收。
+同一 worker 串行运行 mock 用例，不与 native 混跑；并发使用独立 worker。新版生命周期和验收项的当前完成情况见 [PROGRESS.md](PROGRESS.md)。
+
+已完成实际原 hook 的 CPU 槽位矩阵、原 CPU golden 数值链路及实际 TTK 插件发现。测试对 torch_npu 只提供导入边界，原生 metadata/设备函数触发即失败；不是 NPU 仿真。真实 H2D、AICPU 对拍及 AI Core Out/LSE 精度仍需在目标环境验收。

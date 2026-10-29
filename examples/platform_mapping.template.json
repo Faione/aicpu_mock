@@ -1,0 +1,11 @@
+{
+  "sim_soc": "<simulator --sim-soc identifier>",
+  "model_name": "<installed CANN camodel name>",
+  "cann_platform": "<CANN platform ini filename without .ini>",
+  "soc_version": "<scheduling SoC confirmed for qfa>",
+  "source": {
+    "path": "<absolute installed SOC_INFO/project mapping provenance file>",
+    "sha256": "<SHA256 of that provenance file>"
+  },
+  "runtime_soc_aliases": []
+}

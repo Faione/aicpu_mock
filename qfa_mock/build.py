@@ -31,21 +31,18 @@ ASSET_SOURCES = tuple("attention/quant_flash_attn/tests/assets/" + name for name
 AICPU_SOURCES = ("attention/quant_flash_attn_metadata/op_kernel_aicpu/quant_flash_attn_metadata_aicpu.cpp",)
 
 
-def check_sources(repo, compile_only=False):
+def check_sources(repo):
     """List every missing expected file, with purpose and absolute location."""
     repo = Path(repo).resolve()
-    groups = [("compile", "Host C++ compilation", COMPILE_SOURCES)]
-    if not compile_only:
-        groups += [("assets", "TTK assets, CPU golden and decoder", ASSET_SOURCES),
-                   ("aicpu_reference", "reference for metadata wrapper behavior", AICPU_SOURCES)]
+    groups = [("compile", "Host C++ compilation", COMPILE_SOURCES),
+              ("assets", "TTK assets, CPU golden and decoder", ASSET_SOURCES),
+              ("aicpu_reference", "reference for metadata wrapper behavior", AICPU_SOURCES)]
     missing = [{"group": group, "relative_path": name, "path": str(repo / name), "required_for": purpose}
                for group, purpose, names in groups for name in names if not (repo / name).is_file()]
     if missing:
         lines = [f"Missing {len(missing)} required source file(s) under {repo}:"]
         lines += [f"[{item['group']}] {item['path']} ({item['required_for']})" for item in missing]
         lines += ["--repo must point to the source root containing attention/."]
-        if not compile_only and not any(item["group"] == "compile" for item in missing):
-            lines += ["For header-only compilation, use --compile-only; TTK needs assets, while the AICPU cpp is a behavior reference."]
         error = MockError("SOURCE_MISSING", "\n".join(lines))
         error.missing = missing
         error.repo = str(repo)
@@ -80,9 +77,9 @@ def binary_digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def build_helper(repo, output, compiler="c++", compile_only=False):
+def build_helper(repo, output, compiler="c++"):
     repo, output = Path(repo).resolve(), Path(output).resolve()
-    check_sources(repo, compile_only=compile_only)
+    check_sources(repo)
     output.parent.mkdir(parents=True, exist_ok=True)
     # Compile to a private path so failed builds cannot damage a working executable.
     with tempfile.TemporaryDirectory(prefix="qfa-build-", dir=output.parent) as directory:

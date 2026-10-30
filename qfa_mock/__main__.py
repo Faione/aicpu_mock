@@ -22,7 +22,6 @@ def main():
     build.add_argument("--repo", required=True, help="source root containing attention/; Git history is not required")
     build.add_argument("--output", default=str(ROOT / "build/metadata_helper"))
     build.add_argument("--compiler", default="c++")
-    build.add_argument("--compile-only", action="store_true", help="check compilation headers only; omit assets/AICPU reference readiness checks")
     generate = commands.add_parser("generate", help="generate and validate a new output bundle")
     generate.add_argument("--repo", required=True)
     generate.add_argument("--helper", default=str(ROOT / "build/metadata_helper"))
@@ -39,7 +38,7 @@ def main():
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     try:
         if args.command == "build":
-            result = build_helper(args.repo, args.output, args.compiler, compile_only=args.compile_only)
+            result = build_helper(args.repo, args.output, args.compiler)
         elif args.command == "generate":
             if not args.config:
                 fail("MISSING_CONFIG", "provide --config or QFA_METADATA_CONFIG; mock never auto-selects a device")

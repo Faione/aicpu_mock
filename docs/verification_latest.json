@@ -1,10 +1,10 @@
 {
   "date": "2026-10-30",
-  "scope": "headers-only build, explicit assets patch (primary), legacy compatibility, real CPU hooks/golden and TTK SpecLoader",
+  "scope": "mandatory source checks and build without Git, explicit assets patch (primary), legacy compatibility, real CPU hooks/golden and TTK SpecLoader",
   "python": "3.12.16",
   "torch": "2.9.0",
   "numpy": "1.26.4",
-  "tests_run": 54,
+  "tests_run": 55,
   "failures": 0,
   "errors": 0,
   "skipped": 0,

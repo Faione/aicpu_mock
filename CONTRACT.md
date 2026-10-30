@@ -21,7 +21,7 @@ CLI generate 与旧外置插件是专用 mock 入口，缺配置即报错。当�
 
 共享 worker 首次调用固定解析后的仓库路径、规范化配置、helper 路径和构建身份。字段顺序/JSON 排版变化或相同内容迁移配置文件不改变身份；语义变化报 `WORKER_CONFIG_CHANGED`。新 assets 分支直接传入真实形参和分段计划，无原实现加载器或函数替换；旧外置方案的路径/签名检查保留兼容。平台证据工具降为可选诊断，简化路径不要求启动回执；目标 tiling 和设备精度仍须实际验收。
 
-build 不调用 Git。默认按清单检查编译头文件、assets/golden 和 AICPU 参考 cpp；--compile-only 仅检查编译头文件。缺失时返回 SOURCE_MISSING，error.repo 是解析后的根目录，error.missing 数组逐项包含 group、relative_path、path、required_for；message 同时列出全部缺失项。分组为 compile、assets、aicpu_reference。检查失败不调用编译器、不覆盖旧产物。
+build 不调用 Git。编译前必须按清单检查编译头文件、assets/golden 和 AICPU 参考 cpp；缺少任一项都阻止构建，不提供跳过选项。缺失时返回 SOURCE_MISSING，error.repo 是解析后的根目录，error.missing 数组逐项包含 group、relative_path、path、required_for；message 同时列出全部缺失项。分组为 compile、assets、aicpu_reference。检查失败不调用编译器、不覆盖旧产物。
 
 C++ 编译完成后生成 build_format=2 清单，dependency_files 仅记录实际引用的项目头文件及 @helper。source_digest 按这些依赖的相对路径和内容计算，不包含 assets、decoder 或未参与编译的 AICPU cpp；运行时据此检查依赖变化。文件完整性检查不等于行为/版本兼容性验收。
 

@@ -1,7 +1,7 @@
 # QFA 仿真环境的 Mock AICPU 设计与 Agent 交接
 
 日期：2026-10-29  
-状态：Host 与外置接入实现、原 CPU Python 链路及 TTK discovery 已完成；41 项测试通过。真实设备验收未完成，最新进度见第 20 节。  
+状态：主方案已改为一个 assets 补丁与共享 provider；51 项 CPU 测试通过。当前决策与实现见第 21 节，真实设备验收未完成。  
 仓库：`/Users/fanghaolei/Workplace/agent/ops-transformer`  
 原型：`scratch/qfa-metadata-mock/`  
 当前实现：`/Users/fanghaolei/Workplace/agent/aicore_mock`（远端 `git@github.com:Faione/aicpu_mock.git`）
@@ -651,3 +651,41 @@ python3 -m ttk e2e \
 ### 20.3 目标环境仍需完成
 
 mk001 的真实 SoC/架构/有效核数与安装映射待部署方确认。真实 AICPU 同配置对拍、H2D、实际 qfa tiling 与 AI Core 仿真 Out/LSE 精度尚未运行，不能用本机 CPU 记录替代。普通 SDK 设备属性不能独立证明有效核数和构建身份；首版默认采用离线记录与实际启动绑定。目标操作流程见独立仓库 ASSETS_USAGE.md / PLATFORM_EVIDENCE.md。
+
+
+## 21. 允许 assets 补丁的简化方案（2026-10-30）
+
+本轮按用户授权，将“原 assets 零修改”改为“允许维护一个 assets 补丁文件”。以下为新的主方案，覆盖旧方案中外置 Spec 和平台启动器为必选项的约定。
+
+## 决策
+
+1. 保留 Host C++ helper、统一请求、共享 provider、metadata 协议和 CPU 校验，不重写分核算法。
+2. 新增一个统一补丁 `patches/qfa_assets_mock.patch`，只修改三个测试资产文件：impl/golden.py、quant_flash_attn_golden.py、impl/npu_preprocess.py。TTK、Torch 注册、生产 Host/AI Core 均不改。
+3. impl/golden.py 从本次真实形参整理请求，取得并解码 CPU metadata，将分段计划作为可选显式参数传给原数值函数；数值函数在显式计划模式下直接抛出异常，不进入原设备计划获取或全局参考回退。原 Attention、LSE 和输出整理保持原样。
+4. 预处理在 mock 分支从本次真实形参整理请求，选择一个本地 metadata 生成函数，沿用原 run 的动态/静态槽位处理；不改模块函数、不依赖 golden 先执行。
+5. `QFA_METADATA_CONFIG` 非空即启用补丁中的 mock 分支；缺省保持原 native。给定配置但文件无效、请求不支持或 helper 失败则报错。两个分支延迟导入 qfa_mock，不初始化 NPU。
+6. TTK 使用原 assets 的 --plugin 路径。无需外置 Spec、运行时函数替换、异常桥接、原类加载器或启动回执。旧外置方案保留兼容，不与新补丁叠加。
+7. 主方案目标平台由显式配置提供；可用设备查询仅用于已知的容量/明确 SoC 冲突检查，不能自动证明有效核数或编译架构。首次目标仿真仍核对真实 tiling / Out / LSE。旧离线平台证据工具降为可选诊断，不再是简化路径的启动前置条件，不宣称目标已验收。
+8. 修正 build：不调用 Git，不检查 AICPU cpp、golden、assets 或完整源码树；直接调用 C++17 编译器，以实际编译依赖生成清单。缺头文件由编译器准确报告。保留二进制/实际依赖摘要供运行时检查，不添加编译前完整仓库扫描。
+
+## 实施与验收
+
+- 先同步本计划到主设计，再实现 assets 适配、统一补丁及应用工具。
+- 在无 .git、无 assets、无 AICPU cpp 的最小头文件目录验证编译成功；编译失败不覆盖已有可执行文件。
+- 在临时复制的上游 assets 应用和撤销同一个补丁；直接执行补丁后的原函数，禁止依赖 monkeypatch 计划生产函数。
+- mock 下验证双入口请求/计划相同、数值基线/变长/padding/零长/FD/多 section、动态/静态槽，以及 decoder/数值/helper 错误不回退。
+- 无配置时验证原计划入口和原预处理仍被选择；真实 metadata 在 mock 测试中触发即失败。
+- 更新操作说明、进度和 CPU 证据，提交并推送远端。补丁交付后由目标项目显式应用；本地原上游 assets 不自动改写。
+- 真实 AICPU、H2D 和 AI Core 精度继续单列为目标环境验收，不能用 CPU 结果替代。
+
+
+### 21.1 简化方案实施结果（2026-10-30）
+
+主方案已改为一个 assets 补丁与共享 provider；51 项 CPU 测试通过。当前决策与实现见第 21 节，真实设备验收未完成。
+
+- 已交付一个三文件 assets 补丁、显式适配模块和应用/撤销工具；原 Spec 直接执行，不依赖外置函数替换或异常桥接。
+- build 直接编译，使用编译器实际依赖清单；无 .git、assets、AICPU cpp 的最小头文件目录也能构建并运行。旧 SOURCE_MISSING 来自完整源码检查，不是 Git 检查；此编译前检查已移除。
+- worker 与请求规范化提取为独立小模块，简化路径不导入旧 integrations 或 runtime_loader。
+- 51 项 CPU 测试通过，0 失败/错误/跳过。补丁路径与旧路径六组 Out/LSE 摘要逐项一致；动态/静态槽、native 选择、失败不回退、补丁字节级撤销已验证。
+- 260 个原上游 Python 文件测试前后摘要不变，补丁只在临时副本应用。目标项目部署时显式执行 apply_assets_patch.py；真实 AICPU、H2D 和 AI Core 精度仍待目标环境。
+- 更新后的使用流程见 ASSETS_USAGE.md，测试记录见 docs/verification_latest.json。第 21 节覆盖旧方案中的零源码修改和强制启动证据约定。

@@ -1,49 +1,33 @@
-# QFA Mock AICPU 迭代进度
+# QFA Mock AICPU 进度（2026-10-30）
 
-更新日期：2026-10-29。对齐最新主设计第 17–19 节与评审文档；实现基线包含 `7072d5d` 后的全部接入改进。
-
-**本机可完成的实现与 CPU 接入验收已完成。41 项测试通过，0 失败、0 错误、0 跳过；260 个上游 Python 文件测试前后摘要一致。真实 AICPU 对拍、H2D 和 AI Core 仿真精度仍待目标环境。**
+最新决策见主设计第 21 节及 [SIMPLIFICATION_PLAN.md](docs/SIMPLIFICATION_PLAN.md)。主方案已改为“一个 assets 补丁 + 共享 provider + Host helper”，旧零源码修改方案保留兼容，不再是使用前置条件。
 
 ## 本轮完成
 
-| 事项 | 实现与证据 |
-|---|---|
-| 模块加载与来源固定 | 原 Spec 用解析后绝对路径摘要生成别名，重复发现复用；校验已缓存 impl、数值模块、支持包路径和源码摘要；第二 checkout 或签名不兼容立即失败 |
-| worker 生命周期 | 固定 PID、源仓库、规范化配置、helper 路径和构建身份；语义变化报错；JSON 排版/字段顺序变化及相同配置迁移可复用；fork 重置锁与 provider 状态 |
-| 三处受控替换 | 两个计划接管点与第三处分段数值异常保护均按最新决策保留；共享 RLock，成功/异常恢复原对象 |
-| golden 严格成功条件 | 要求一次计划消费、非空解码、一次分段函数成功返回；异常桥接在边界转普通 MockError，保留原因链；KeyboardInterrupt/SystemExit 不转换 |
-| 平台预检 | 离线模型、平台、内核、构建与映射记录绑定实际 TTK argv/环境；核对摘要、NpuArch、有效核数和调度规则；支持真实 tiling 复核与 FD 容量检查；无证据不执行设备路径 |
-| 查询兼容 | SoC 类型化别名及来源记录；区分物理总核数与有效核数；查询不可用可使用离线证据，明确冲突则失败；不提供跳过校验开关 |
-| 原 hook 槽位矩阵 | 使用真实 CPU Tensor 执行原 run：动态返回、(0,) resize/copy、静态匹配及不匹配错误/恢复；只绕过设备平台证据边界 |
-| 原 CPU 数值链路 | 实际执行原输入生成、输入适配、decoder、分段 Attention/LSE 与输出整理；覆盖基线、变长、padding、零长、FD、多 section，保留原 FP32 Out/LSE |
-| TTK 插件发现 | 使用实际 TTK SpecLoader 发现外置类，验证输入/compare/容差继承；原 native Spec 仍独立可发现 |
-| 诊断与复现 | 结构化源模块路径/摘要、worker、阶段、请求/计划摘要、恢复结果；验证脚本保存测试记录、CPU Out/LSE 摘要和上游完整性摘要 |
+- build 直接调用 C++17 编译器，不调用 Git、不扫描完整源码树、不要求 AICPU cpp 或 assets/golden。成功后根据实际编译依赖生成 build_format=2 清单。
+- 已在仅含 7 个项目头文件、无 .git、无 assets、无任何 cpp 的目录中编译并运行 helper，基线二进制摘要正确；路径包含空格也通过。缺少真正头文件时报告编译器错误，不覆盖已有产物。
+- 交付唯一的 patches/qfa_assets_mock.patch，修改三个测试资产。应用工具支持检查、重复应用、撤销，保留 LF/CRLF；无 Git 仓库的目录也可应用（需 git 可执行程序）。
+- impl/golden.py 传递显式分段计划，数值函数跳过设备 metadata 获取并直接传播异常；没有临时替换函数或异常桥接。
+- 预处理选择本地 metadata_builder，沿用原动态槽返回、零长占位、静态检查和 copy。配置缺省走 native，给定无效配置失败；其他量化模式提前拒绝。
+- 原 Spec 直接运行，主路径不导入旧 integrations/runtime_loader；worker 和请求整理提取为小型共享模块。
+- 平台离线记录/启动器降为旧兼容路径的工具，新主路径无需生成这些文件。目标由配置显式声明，已知容量冲突会失败，真实 tiling / Out / LSE 仍在目标环境验收。
 
-配置继续为 JSON，缓存仅进程内。一次性输入范围不变：无历史 KV cache 追加、跨轮复用或请求加入。D=128、正向 Eager 等已支持组合见 README/CONTRACT；YAML、持久化缓存和新布局/图模式按设计后置。
+## 验证
 
-## 验收阶段
+**51 项测试通过，0 失败、0 错误、0 跳过；260 个上游 Python 文件摘要不变。补丁与旧路径六组 Out/LSE 摘要逐项完全一致。**
 
-| 阶段 | 状态 | 范围与限制 |
-|---|---|---|
-| A：加载与失败恢复 | 完成 | 路径冲突、复用、配置/构建变化、helper/decoder/数值/外层输出错误、三处恢复和中断传播均有测试 |
-| B：原 hook | CPU 完成 | 真正运行原 run 和真实 Tensor；不是 H2D 验收；平台检查另外用带文件摘要的夹具验证 |
-| C：原 CPU golden | 完成 | 6 组真实数值用例；测试中的 torch_npu 仅为导入边界，设备/metadata 调用触发即失败，没有替代数值运算 |
-| TTK discovery | 完成 | 实际原 SpecLoader、外置注册及继承；不等于完整 TTK 设备 e2e |
-| D：同配置真实 AICPU 对拍 | 未完成 | 当前没有可执行 AICPU 的目标设备证据 |
-| E：目标 AI Core 仿真 | 未完成 | 未验证真实 H2D、tiling 和 Out/LSE 精度；mk001 的 SoC/架构/仿真注册仍需部署方确认 |
+- 补丁在临时复制的上游 assets 应用，不改本地原 assets 或 TTK。
+- 直接调用补丁后的原 Spec，执行基线、变长、padding、零长、FD、多 section 六组数值；mock 计划函数没有被测试替换。
+- 验证动态 metadata、(0,)、静态匹配/不匹配；双入口请求和计划一致；decoder/数值错误不调用原生 metadata 或全局参考。
+- 无配置时原计划入口及原预处理仍被选择。真实 TTK SpecLoader 发现原 Spec。
+- 保留旧外置方案与平台证据的兼容回归。完整测试结果与补丁/旧路径 Out/LSE 的逐项摘要比较见 [verification_latest.json](docs/verification_latest.json)。
 
-普通设备属性不足以独立证明构建和有效核数；首版默认使用已绑定的离线记录。尚无经真实 SDK 验收的纯运行时证明适配器，不影响离线预检路径的使用。离线记录必须来自真实构建与安装，夹具测试不能作为 mk001 平台登记。
+## 使用与部署
 
-## 可复核证据
+更新代码后重新 build helper，再执行 apply_assets_patch.py。设置 PYTHONPATH、QFA_METADATA_CONFIG、QFA_MOCK_HELPER，TTK 的 --plugin 指向目标项目原 assets。完整命令见 [ASSETS_USAGE.md](ASSETS_USAGE.md)。
 
-- [verification_latest.json](docs/verification_latest.json)：Python 3.12.16、Torch 2.9.0、NumPy 1.26.4；41 项通过、无跳过，260 个上游文件摘要不变。
-- [cpu_tests_latest.txt](docs/cpu_tests_latest.txt)：完整测试结果。
-- 机器记录含动态/静态槽位结论、实际 TTK discovery 结论和 6 组 CPU Out/LSE 的 shape、dtype、数值摘要及请求/计划摘要。
-- arch92 80/80 固定基线 SHA-256 回归通过；本机还与旧二进制逐字节比较。
-- 平台夹具覆盖别名整数/字符串、查询不可用、容量不足、有效核数/架构/源码冲突、文件变更、启动绑定、实际 tiling 差异及证据打包 CLI。
+本地上游 assets 尚未自动打补丁，目标部署需要显式应用。源码不匹配时工具会失败，不应强行忽略。旧外置 ttk_plugin.py 不与新补丁叠加。
 
-## 目标项目的剩余工作
+## 尚待目标环境
 
-1. 确认真实调度 SoC、编译架构、有效核数、CANN 平台和仿真器/模型映射。
-2. 用实际安装与 qfa 构建生成可信记录，在目标机器编译 helper、获取 metadata，再通过 launch 拉起 TTK；流程见 [ASSETS_USAGE.md](ASSETS_USAGE.md) 和 [PLATFORM_EVIDENCE.md](PLATFORM_EVIDENCE.md)。
-3. 保存首次真实 tiling 复核、H2D、Out/LSE 比较结果；独立记录同配置 AICPU 对拍，不用 CPU 测试替代设备验收。
+mk001 对应真实 SoC/架构/有效核数、实际 tiling、AICPU 对拍、H2D、AI Core 仿真 Out/LSE 精度仍需在目标机器完成。CPU 验证不能替代这些结论。首版仍是一次性输入、MXFP8 正向 Eager、D=128；未扩展历史 KV cache、YAML、持久化缓存或图模式。

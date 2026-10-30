@@ -17,9 +17,11 @@
 | cache.enabled | 可选，布尔值，默认 true |
 | cache.max_entries | 可选，整数 1–128，默认 8；仅进程内缓存，无持久化缓存 |
 
-CLI 与外置 TTK 插件均为专用 mock 入口，缺配置即报错。native 通过选择原 assets 的插件路径启动，不依据配置缺失自动切换。
+CLI generate 与旧外置插件是专用 mock 入口，缺配置即报错。当前推荐的 assets 补丁使用原 Spec：QFA_METADATA_CONFIG 非空进入 mock，未设置时保持 native；给定的配置无效时仍直接失败。
 
-外置 worker 首次调用固定解析后的仓库路径、规范化配置、helper 路径和构建身份。字段顺序/JSON 排版变化或相同内容迁移配置文件不改变身份；语义变化报 `WORKER_CONFIG_CHANGED`。支持模块和原实现加载时检查绝对来源路径、签名和源码摘要；已加载源文件改变后要求重启 worker。设备执行另需 [平台证据](PLATFORM_EVIDENCE.md)，不改变 CPU helper 的输入契约。
+共享 worker 首次调用固定解析后的仓库路径、规范化配置、helper 路径和构建身份。字段顺序/JSON 排版变化或相同内容迁移配置文件不改变身份；语义变化报 `WORKER_CONFIG_CHANGED`。新 assets 分支直接传入真实形参和分段计划，无原实现加载器或函数替换；旧外置方案的路径/签名检查保留兼容。平台证据工具降为可选诊断，简化路径不要求启动回执；目标 tiling 和设备精度仍须实际验收。
+
+build 不调用 Git，也不检查完整源码树。C++ 编译完成后生成 build_format=2 清单，dependency_files 仅记录实际引用的项目头文件及 @helper。source_digest 按这些依赖的相对路径和内容计算，不包含 assets、decoder 或未参与编译的 AICPU cpp；运行时据此检查依赖变化。升级后重新编译并生成新 bundle，旧格式清单不继续复用。
 
 ## 请求
 
@@ -74,7 +76,7 @@ Header 槽位：0=sectionNum，1=isFD，2=M，3=S2，4=AIC，5=AIV，15=needInit
 
 - `protocol_version=1`、`algorithm_version=qfa-host-v1`。
 - `shape`、`header`、`used_words`、`active_aic`、`active_aiv`、`target`。
-- `source_digest`：调度头文件、相关 QFA 源码、原 decoder 与 Host C++ 适配代码的 SHA-256 指纹。
+- `source_digest` / `dependency_files`：实际编译依赖及 Host C++ 适配代码的 SHA-256 指纹/清单，不代表已验证生产包装逻辑或实际 tiling。
 - `request_digest`：目标、规范化请求、算法版本及源码指纹的规范 JSON 的 SHA-256。
 - `metadata_digest`：完整二进制 SHA-256。
 - `validation`：结构/原 decoder 覆盖校验状态、FD 任务数、有效 Q/KV 长度。
@@ -90,7 +92,7 @@ CLI 非零退出，stderr 输出单个 JSON 错误对象：
 
 主要错误码：`MISSING_FIELD`、`INVALID_INPUT`、`UNSUPPORTED_FIELD`、`UNSUPPORTED_REQUEST`、`UNSUPPORTED_TARGET`、`TARGET_MISMATCH`、`REQUEST_MISMATCH`、`CAPACITY_EXCEEDED`、`HELPER_NOT_BUILT`、`STALE_BUILD`、`HELPER_FAILED`、`HELPER_TIMEOUT`、`INVALID_METADATA`、`COVERAGE_FAILED`、`GOLDEN_FAILED`。IO/JSON 格式错误由 CLI 输出 `IO_OR_FORMAT_ERROR`。库接口抛出 `MockError`（含 `.code`），IO 错误保留 Python 异常。
 
-接入层另有 `MODULE_SOURCE_CONFLICT`、`SOURCE_CHANGED`、`UPSTREAM_INCOMPATIBLE`、`WORKER_CONFIG_CHANGED`、`TARGET_UNVERIFIED`、`PREPROCESS_FAILED`、`RESTORE_FAILED`。结构化日志包括源路径/摘要、阶段、请求/计划摘要、worker 和恢复结果。golden 的内部异常桥接不逃到 TTK：普通数值异常转换为带原始原因链的 `MockError`；`KeyboardInterrupt`、`SystemExit` 不转换。
+旧接入层另有 `MODULE_SOURCE_CONFLICT`、`SOURCE_CHANGED`、`UPSTREAM_INCOMPATIBLE`、`WORKER_CONFIG_CHANGED`、`TARGET_UNVERIFIED`、`PREPROCESS_FAILED`、`RESTORE_FAILED`。新补丁在显式 metadata_plan 模式中直接传播数值异常，不使用内部 BaseException 桥接；未设置配置的 native 行为不变。新路径日志以 patched_golden_plan / patched_preprocess_plan 关联请求与 metadata 摘要。
 
 失败不提交真实 qfa_metadata，不使用固定样例替代，不回退全局参考计算。
 

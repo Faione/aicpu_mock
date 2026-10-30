@@ -91,6 +91,7 @@ class MetadataProvider:
                     fail("INVALID_METADATA", f"invalid helper output: {error}")
             checks = validate_metadata(data, summary, config, r, self.repo)
             summary.update({"request_digest": key, "metadata_digest": hashlib.sha256(data).hexdigest(),
+                            "dependency_files": manifest.get("dependency_files"),
                             "source_digest": manifest["source_digest"], "target": config["target"],
                             "validation": checks})
             result = MetadataResult(data, canonical(summary), canonical(r), self._config_json)

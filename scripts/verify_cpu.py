@@ -38,15 +38,22 @@ def main():
     import torch
     import numpy
     from test_real_python import ACCEPTANCE_RECORDS
+    from test_patched_assets import PATCHED_RECORDS
     from qfa_mock.build import verify_build
-    report = {"date": "2026-10-29", "scope": "Host, loader/lifecycle, offline platform checks, real upstream CPU hooks/golden, actual TTK SpecLoader",
+    equivalent = (len(PATCHED_RECORDS["numerical"]) == len(ACCEPTANCE_RECORDS["numerical"]) == 6 and
+                  all((a["out_sha256"], a["lse_sha256"]) == (b["out_sha256"], b["lse_sha256"])
+                      for a, b in zip(PATCHED_RECORDS["numerical"], ACCEPTANCE_RECORDS["numerical"])))
+    report = {"date": "2026-10-30", "scope": "headers-only build, explicit assets patch (primary), legacy compatibility, real CPU hooks/golden and TTK SpecLoader",
               "python": sys.version.split()[0], "torch": torch.__version__, "numpy": numpy.__version__,
               "tests_run": result.testsRun, "failures": len(result.failures), "errors": len(result.errors),
-              "skipped": len(result.skipped), "passed": result.wasSuccessful() and not result.skipped,
+              "skipped": len(result.skipped), "passed": result.wasSuccessful() and not result.skipped and equivalent,
+              "patched_numerics_equal_legacy": equivalent,
               "upstream_file_count": len(before), "upstream_unchanged": before == after,
               "upstream_sha256_before": before, "upstream_sha256_after": after,
               "helper_build": verify_build(ROOT / "build/metadata_helper", repo),
               "cpu_acceptance": ACCEPTANCE_RECORDS,
+              "patched_assets_acceptance": PATCHED_RECORDS,
+              "assets_patch_sha256": hashlib.sha256((ROOT / "patches/qfa_assets_mock.patch").read_bytes()).hexdigest(),
               "cpu_boundaries": ["torch_npu import-only shim; device functions/real metadata raise immediately",
                                  "original CPU slot tests bypass only platform proof; real Tensor transfer stays on CPU"],
               "aicpu_parity": "not_run", "real_h2d": "not_run", "aicore_simulation_out_lse": "not_run",

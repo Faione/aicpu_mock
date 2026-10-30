@@ -18,6 +18,10 @@ def forbidden(*args, **kwargs):
 
 @contextmanager
 def cpu_import_boundary(torch):
+    # Keep extension modules outside patch.dict(sys.modules)' restoration snapshot.
+    # Reinitializing ml_dtypes against the same NumPy runtime is not supported.
+    import ml_dtypes  # noqa: F401
+
     npu = types.ModuleType("torch_npu")
     npu.__spec__ = importlib.machinery.ModuleSpec("torch_npu", loader=None)
     npu.npu = types.SimpleNamespace(is_available=lambda: False)

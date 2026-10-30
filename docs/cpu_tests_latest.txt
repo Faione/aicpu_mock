@@ -1,3 +1,6 @@
+test_missing_headers_report_compiler_error_and_preserve_previous_output (test_build.BuildTests.test_missing_headers_report_compiler_error_and_preserve_previous_output) ... ok
+test_only_actual_headers_are_needed_without_git_or_assets (test_build.BuildTests.test_only_actual_headers_are_needed_without_git_or_assets) ... ok
+test_primary_adapter_does_not_import_legacy_patch_or_loader_modules (test_build.BuildTests.test_primary_adapter_does_not_import_legacy_patch_or_loader_modules) ... ok
 test_cached_impl_from_other_checkout_is_not_overwritten (test_lifecycle.LifecycleTests.test_cached_impl_from_other_checkout_is_not_overwritten) ... ok
 test_golden_requires_successful_section_and_restores_all_failure_paths (test_lifecycle.LifecycleTests.test_golden_requires_successful_section_and_restores_all_failure_paths) ... ok
 test_module_source_change_and_missing_signature_fail (test_lifecycle.LifecycleTests.test_module_source_change_and_missing_signature_fail) ... ok
@@ -7,6 +10,13 @@ test_replacement_and_failure_stage_logs_are_structured (test_lifecycle.Lifecycle
 test_user_interrupts_are_never_converted (test_lifecycle.LifecycleTests.test_user_interrupts_are_never_converted) ... ok
 test_worker_identity_is_semantic_and_configuration_is_frozen (test_lifecycle.LifecycleTests.test_worker_identity_is_semantic_and_configuration_is_frozen) ... ok
 test_worker_rejects_checkout_helper_and_build_changes (test_lifecycle.LifecycleTests.test_worker_rejects_checkout_helper_and_build_changes) ... ok
+test_actual_ttk_discovers_the_original_patched_assets_spec (test_patched_assets.PatchedAssetsTests.test_actual_ttk_discovers_the_original_patched_assets_spec) ... ok
+test_bad_config_and_unsupported_quant_mode_fail_early (test_patched_assets.PatchedAssetsTests.test_bad_config_and_unsupported_quant_mode_fail_early) ... ok
+test_decoder_and_numeric_errors_propagate_without_native_or_global_fallback (test_patched_assets.PatchedAssetsTests.test_decoder_and_numeric_errors_propagate_without_native_or_global_fallback) ... ok
+test_direct_numeric_baseline_varlen_padding_zero_fd_and_sections (test_patched_assets.PatchedAssetsTests.test_direct_numeric_baseline_varlen_padding_zero_fd_and_sections) ... ok
+test_direct_preprocess_slots_share_the_golden_plan (test_patched_assets.PatchedAssetsTests.test_direct_preprocess_slots_share_the_golden_plan) ... ok
+test_patch_is_idempotent_reversible_and_does_not_need_git_repository (test_patched_assets.PatchedAssetsTests.test_patch_is_idempotent_reversible_and_does_not_need_git_repository) ... ok
+test_unset_config_keeps_native_plan_and_preprocess_selection (test_patched_assets.PatchedAssetsTests.test_unset_config_keeps_native_plan_and_preprocess_selection) ... ok
 test_actual_tiling_is_compared_to_header_and_request (test_platform.PlatformTests.test_actual_tiling_is_compared_to_header_and_request) ... ok
 test_bound_offline_evidence_works_without_runtime_queries (test_platform.PlatformTests.test_bound_offline_evidence_works_without_runtime_queries) ... ok
 test_evidence_preparation_cli_packages_existing_records (test_platform.PlatformTests.test_evidence_preparation_cli_packages_existing_records) ... ok
@@ -41,6 +51,6 @@ test_real_golden_baseline_varlen_padding_zero_and_no_stale_context (test_real_py
 test_real_golden_fd_and_multisection (test_real_python.RealPythonTests.test_real_golden_fd_and_multisection) ... ok
 
 ----------------------------------------------------------------------
-Ran 41 tests in 3.628s
+Ran 51 tests in 7.318s
 
 OK

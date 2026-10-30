@@ -1,14 +1,15 @@
 {
-  "date": "2026-10-29",
-  "scope": "Host, loader/lifecycle, offline platform checks, real upstream CPU hooks/golden, actual TTK SpecLoader",
+  "date": "2026-10-30",
+  "scope": "headers-only build, explicit assets patch (primary), legacy compatibility, real CPU hooks/golden and TTK SpecLoader",
   "python": "3.12.16",
   "torch": "2.9.0",
   "numpy": "1.26.4",
-  "tests_run": 41,
+  "tests_run": 51,
   "failures": 0,
   "errors": 0,
   "skipped": 0,
   "passed": true,
+  "patched_numerics_equal_legacy": true,
   "upstream_file_count": 260,
   "upstream_unchanged": true,
   "upstream_sha256_before": {
@@ -538,10 +539,21 @@
   "helper_build": {
     "algorithm_version": "qfa-host-v1",
     "binary_digest": "87fecc8c017dfb3c19ae2cc8cf8b0b1ca9bf12fb3059cd66c1e887b6338f4403",
+    "build_format": 2,
     "compiler": "c++",
+    "dependency_files": [
+      "@helper",
+      "attention/common/op_kernel/load_balance/base_info.h",
+      "attention/common/op_kernel/load_balance/load_balance_common.h",
+      "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k.h",
+      "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k_def.h",
+      "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k_impl.h",
+      "attention/quant_flash_attn/op_host/qfa_adjust_sinner_souter.h",
+      "attention/quant_flash_attn_metadata/op_kernel_aicpu/quant_flash_attn_metadata.h"
+    ],
     "protocol_version": 1,
     "repo": "/Users/fanghaolei/Workplace/agent/ops-transformer",
-    "source_digest": "7c2729538ba22afc2d0a17b017ef29d7e126db44917f1659cb07acf2aae27f4a"
+    "source_digest": "b6801a12e0c9370e1f03a8db89f43635b7c934d5f10f9df835c26ca37cd9a7a8"
   },
   "cpu_acceptance": {
     "slots": [
@@ -587,7 +599,7 @@
           0,
           0
         ],
-        "request_digest": "84acb3e51a21fe5775fea94b5c39e1718bf954caf77b80d9c3ea9af58cef0068",
+        "request_digest": "54a0d0076ed7e05b6cd65517e562311a3d1e79322aa5210233773c30c545d95e",
         "metadata_digest": "e504413ef5b29d24d6742f588d70fa20e4909814605d6f9455fec20096139c9f",
         "out_shape": [
           128,
@@ -623,7 +635,7 @@
           0,
           0
         ],
-        "request_digest": "a45f91474b28414413fbad9f73a3e6a6df8489af66ea9a065aa4acaa352aa7d1",
+        "request_digest": "290a878740537aca066ead1e68b907a84e633b3089899c37b244480f3aa00136",
         "metadata_digest": "8a76f0128caa3fc5e5b689a30b27706c6f0d9dba12360f57eb2a7fcb845d1de8",
         "out_shape": [
           50,
@@ -659,7 +671,7 @@
           0,
           1
         ],
-        "request_digest": "98056ed6dac49db402e44a04916262bb611d061dca940c7a2f37c0e2e328b6cb",
+        "request_digest": "c3acd7e3949906d0c1aad26f939eb810214fa36bde1f7ac4a58cedf7f35b0d5d",
         "metadata_digest": "b08a851c5d7b9c61dff9c08c62ee467ec2b131b7ec7937dacf143181b008941b",
         "out_shape": [
           32,
@@ -695,7 +707,7 @@
           0,
           0
         ],
-        "request_digest": "9174e29e76ffb9b8da4ed5443cb6476f1a4a08ae694306a3ecceda56680e4e08",
+        "request_digest": "f02d11b83569b980afcb73d28692d37fee42c3312a20e2ec81d77d64ca8f9246",
         "metadata_digest": "eca0a48a9cf2a007faecb2b54459c1e26d07e74381e77e9efce6de315f8b90da",
         "out_shape": [
           8,
@@ -731,7 +743,7 @@
           0,
           0
         ],
-        "request_digest": "441a24fcabb6c8424433203512f1ea4d3791e9e1618edcad0267f09c11b64d09",
+        "request_digest": "943cb0cca797d9c0626e023dbe0f8fac73e9bbd68f792193f53ac177dac20dd4",
         "metadata_digest": "d641648161bc083beea41d1d0e78346723772aea73c8595dc4da59913109fab9",
         "out_shape": [
           1,
@@ -767,7 +779,7 @@
           0,
           0
         ],
-        "request_digest": "215ddc6d1492a757a3c4e5efcaa39e613c348645af65a9916694a37a3a251f3d",
+        "request_digest": "a9db16e09ea4938628da0ea516af39c47f1988f737c8b1b92882264f39b95b6d",
         "metadata_digest": "8ed789ab3ee8430c1ec498e318f9e78bef9b229e8036a6e9020fe2b5cd5099d6",
         "out_shape": [
           129,
@@ -792,6 +804,165 @@
       "plugin_path": "/Users/fanghaolei/Workplace/agent/aicore_mock/ttk_plugin.py"
     }
   },
+  "patched_assets_acceptance": {
+    "numerical": [
+      {
+        "q": [
+          128
+        ],
+        "kv": [
+          1024
+        ],
+        "arch": "arch92",
+        "out_shape": [
+          128,
+          64,
+          128
+        ],
+        "lse_shape": [
+          64,
+          128
+        ],
+        "no_function_replacements": true,
+        "out_sha256": "98ec61fa776ff67bf1ff7923539801288bc89ecf698cab2a49398e2667217760",
+        "lse_sha256": "9170bdfaf60ce7f359ec0bff855fed6369bda8a879ed2f5dcffaee97f0492380"
+      },
+      {
+        "q": [
+          17,
+          33
+        ],
+        "kv": [
+          64,
+          96
+        ],
+        "arch": "arch92",
+        "out_shape": [
+          50,
+          4,
+          128
+        ],
+        "lse_shape": [
+          4,
+          50
+        ],
+        "no_function_replacements": true,
+        "out_sha256": "f0463af79fe8e26282240c94acc7ce7a50281b5d7b03196cddc1aa1140b74fc2",
+        "lse_sha256": "ddad59378feef32b0180380b065850c78daab2f6fa29b44bd0ed1af090b3ce20"
+      },
+      {
+        "q": [
+          8,
+          0
+        ],
+        "kv": [
+          64,
+          0
+        ],
+        "arch": "arch92",
+        "out_shape": [
+          32,
+          4,
+          128
+        ],
+        "lse_shape": [
+          4,
+          32
+        ],
+        "no_function_replacements": true,
+        "out_sha256": "1725aec1b4252eef4f11f7c39c6fb573fe2639ea287001270444fd4ba5822367",
+        "lse_sha256": "f1607a73a41eb032af75b182fe02d75cb2695bd9b7194512f2366339d6c605d0"
+      },
+      {
+        "q": [
+          8
+        ],
+        "kv": [
+          64
+        ],
+        "arch": "arch92",
+        "out_shape": [
+          8,
+          2,
+          128
+        ],
+        "lse_shape": [
+          2,
+          8
+        ],
+        "no_function_replacements": true,
+        "out_sha256": "8d310eaec4f415484fcbc25c31ad0cf87baaecf6f4e91108102a4912bb85d2ff",
+        "lse_sha256": "20730ec1bb8f943aca6cc710e87490825b36282a4fded2324458cdaa3c0c4aa2"
+      },
+      {
+        "q": [
+          1
+        ],
+        "kv": [
+          32768
+        ],
+        "arch": "arch35",
+        "out_shape": [
+          1,
+          1,
+          128
+        ],
+        "lse_shape": [
+          1,
+          1
+        ],
+        "no_function_replacements": true,
+        "out_sha256": "0d10921db57603fa71c344d644cc6e013a323c5a3b421e4cb789e948e9b7e270",
+        "lse_sha256": "83cc4a85fbab9071c0797bcd86f3ee235273502ef7a4423ce516f0cfe48aa8fa"
+      },
+      {
+        "q": [
+          129
+        ],
+        "kv": [
+          16384
+        ],
+        "arch": "arch35",
+        "out_shape": [
+          129,
+          24,
+          128
+        ],
+        "lse_shape": [
+          24,
+          129
+        ],
+        "no_function_replacements": true,
+        "out_sha256": "97c3575955ddc2637f55644b9f4c19cf1048d574338e66acaa5db345c43acf30",
+        "lse_sha256": "a2c7802bc58c1c3a94108b65b04b7091b370459825edc060ab37907a55772907"
+      }
+    ],
+    "slots": [
+      {
+        "kind": "dynamic",
+        "passed": true,
+        "no_function_replacements": true
+      },
+      {
+        "kind": "placeholder",
+        "passed": true,
+        "no_function_replacements": true
+      },
+      {
+        "kind": "matching",
+        "passed": true,
+        "no_function_replacements": true
+      },
+      {
+        "kind": "mismatch",
+        "passed": true,
+        "no_function_replacements": true
+      }
+    ],
+    "native_selection": true,
+    "original_spec_discovered": true
+  },
+  "assets_patch_sha256": "95c7365b7b92151caad8a501bef234bac5fe6053c5e158d720a17da91c34c76d",
   "cpu_boundaries": [
     "torch_npu import-only shim; device functions/real metadata raise immediately",
     "original CPU slot tests bypass only platform proof; real Tensor transfer stays on CPU"

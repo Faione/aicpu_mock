@@ -19,7 +19,7 @@ def main():
     parser.add_argument("--verbose", action="store_true")
     commands = parser.add_subparsers(dest="command", required=True)
     build = commands.add_parser("build", help="explicitly compile original scheduler headers")
-    build.add_argument("--repo", required=True)
+    build.add_argument("--repo", required=True, help="include root containing attention/; no Git history or assets required")
     build.add_argument("--output", default=str(ROOT / "build/metadata_helper"))
     build.add_argument("--compiler", default="c++")
     generate = commands.add_parser("generate", help="generate and validate a new output bundle")
@@ -56,7 +56,7 @@ def main():
             request = normalize_request(load_json(bundle / "request.json"))
             summary = load_json(bundle / "result.json")
             data = (bundle / "metadata.bin").read_bytes()
-            if summary.get("source_digest") != source_digest(args.repo):
+            if summary.get("source_digest") != source_digest(args.repo, summary.get("dependency_files")):
                 fail("SOURCE_CHANGED", "bundle was generated from a different source snapshot")
             if summary.get("metadata_digest") != hashlib.sha256(data).hexdigest():
                 fail("DIGEST_MISMATCH", "metadata bytes differ from bundle digest")

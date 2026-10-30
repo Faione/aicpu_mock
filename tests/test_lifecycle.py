@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from qfa_mock import MetadataProvider, MockError
 from qfa_mock.build import ROOT
-from qfa_mock import integrations, runtime_loader
+from qfa_mock import integrations, runtime_loader, worker
 from qfa_mock.model import canonical, load_json
 from test_prototype import FakeTensor, make_call
 
@@ -43,7 +43,7 @@ class LifecycleTests(unittest.TestCase):
         return caught.exception
 
     def test_worker_identity_is_semantic_and_configuration_is_frozen(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(integrations._providers, {}, clear=True):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(worker._providers, {}, clear=True):
             path = Path(directory) / "config.json"
             config = load_json(ROOT / "examples/target_arch92.json")
             path.write_text(canonical(config))
@@ -61,7 +61,7 @@ class LifecycleTests(unittest.TestCase):
                 self.assert_code("WORKER_CONFIG_CHANGED", integrations.get_provider)
 
     def test_worker_rejects_checkout_helper_and_build_changes(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(integrations._providers, {}, clear=True):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(worker._providers, {}, clear=True):
             directory = Path(directory)
             path = directory / "config.json"
             path.write_text((ROOT / "examples/target_arch92.json").read_text())
@@ -80,17 +80,17 @@ class LifecycleTests(unittest.TestCase):
                 self.assert_code("STALE_BUILD", integrations.get_provider)
 
     def test_new_pid_gets_its_own_provider_and_fork_reset_clears_locks(self):
-        with patch.dict(integrations._providers, {}, clear=True), \
+        with patch.dict(worker._providers, {}, clear=True), \
                 patch.dict(os.environ, QFA_REPO=str(REPO), QFA_METADATA_CONFIG=str(ROOT / "examples/target_arch92.json"), QFA_MOCK_HELPER=str(HELPER)):
-            with patch("qfa_mock.integrations.os.getpid", return_value=100):
+            with patch("qfa_mock.worker.os.getpid", return_value=100):
                 first = integrations.get_provider()
-            with patch("qfa_mock.integrations.os.getpid", return_value=101):
+            with patch("qfa_mock.worker.os.getpid", return_value=101):
                 second = integrations.get_provider()
             self.assertIsNot(first, second)
-            old_lock = integrations._provider_lock
-            integrations._after_fork()
-            self.assertEqual(integrations._providers, {})
-            self.assertIsNot(integrations._provider_lock, old_lock)
+            old_lock = worker._provider_lock
+            worker._after_fork()
+            self.assertEqual(worker._providers, {})
+            self.assertIsNot(worker._provider_lock, old_lock)
 
     def test_path_pinned_spec_reuse_and_second_checkout_rejected(self):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second, clean_upstream_modules():

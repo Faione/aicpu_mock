@@ -1,0 +1,147 @@
+--- a/attention/quant_flash_attn/tests/assets/impl/golden.py
++++ b/attention/quant_flash_attn/tests/assets/impl/golden.py
+@@ -485,6 +485,11 @@
+     return_softmax_lse: bool = False,
+     **kwargs,
+ ):
++    # QFA_MOCK_ASSETS_V1: explicit per-call request, no module replacement.
++    _qfa_mock_request = None
++    if os.environ.get("QFA_METADATA_CONFIG"):
++        from qfa_mock.assets import request
++        _qfa_mock_request = request(locals(), golden=True)
+     # —— op-schema 直调: 额外适配参数经 kwargs 传入 ——
+     N_q = kwargs.get("N_q")
+     N_kv = kwargs.get("N_kv")
+@@ -748,6 +753,13 @@
+     # ----- 调 cpu_mxfp8_golden (BNSD fp8 + group 维 fp32 scale) -----
+     # v_tail_bnsd: (B,N_kv,block_size,D) bf16 尾块原值, cpu_mxfp8_golden 内注入
+     # 尾段V原值(scale=1) + 尾列P直存bf16 (与 kernel 纯尾task VF bf16 直出对齐)
++    _qfa_metadata_plan = None
++    if _qfa_mock_request is not None:
++        from qfa_mock.assets import golden_plan
++        _qfa_metadata_plan = golden_plan(
++            _qfa_mock_request, mxfp8_golden_mod._decode_qfa_sections,
++            actual_seq_q, actual_seq_kv,
++        )
+     cpu_out, cpu_lse = mxfp8_golden_mod.cpu_mxfp8_golden(
+         q_fp8_bnsd,
+         k_fp8_bnsd,
+@@ -761,6 +773,7 @@
+         softmax_scale=softmax_scale,
+         v_tail_bnsd=vtail_bnsd,
+         tail_lens=vtail_tail_lens,
++        metadata_plan=_qfa_metadata_plan,
+     )
+ 
+     # 输出布局: 优先算子 layout_out 参数 (redline 用例 BNSD); 老 CSV layout_out
+@@ -857,6 +870,8 @@
+     return_softmax_lse: bool = False,
+     **kwargs,
+ ):
++    if os.environ.get("QFA_METADATA_CONFIG"):
++        raise ValueError("QFA mock assets support quant_mode=1 only")
+     # —— op-schema 直调: 额外适配参数经 kwargs 传入 ——
+     N_q = kwargs.get("N_q")
+     N_kv = kwargs.get("N_kv")
+@@ -1062,6 +1077,8 @@
+     return_softmax_lse: bool = False,
+     **kwargs,
+ ):
++    if os.environ.get("QFA_METADATA_CONFIG"):
++        raise ValueError("QFA mock assets support quant_mode=1 only")
+     # —— op-schema 直调: 额外适配参数经 kwargs 传入 ——
+     batch_size = kwargs.get("batch_size")
+     N_q = kwargs.get("N_q")
+@@ -1421,6 +1438,8 @@
+     return_softmax_lse: bool = False,
+     **kwargs,
+ ):
++    if os.environ.get("QFA_METADATA_CONFIG"):
++        raise ValueError("QFA mock assets support quant_mode=1 only")
+     """HiFP4 CPU golden 插件 (quant_mode=10)。
+ 
+     与 cpu_qfa_mxfp8 同签名 (op-schema 直调), hifp4 专用处理:
+--- a/attention/quant_flash_attn/tests/assets/quant_flash_attn_golden.py
++++ b/attention/quant_flash_attn/tests/assets/quant_flash_attn_golden.py
+@@ -1398,6 +1398,7 @@
+     softmax_scale=None,
+     v_tail_bnsd=None,
+     tail_lens=None,
++    metadata_plan=None,  # QFA_MOCK_ASSETS_V1: supplied by the assets adapter.
+ ):
+     """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水
+ 
+@@ -1428,7 +1429,10 @@
+     # 注意: 必须在下方 GQA 广播之前分发 —— sectioned 按 kv head 索引
+     # dequant_scale_k/v, 广播后的 scale 按 q head 排布, decode GQA 下
+     # kv head 1..N_kv-1 会错拿 kv head 0 的 scale。
+-    section_info = get_qfa_section_info(actual_seq_q, actual_seq_kv)
++    section_info = (
++        metadata_plan if metadata_plan is not None
++        else get_qfa_section_info(actual_seq_q, actual_seq_kv)
++    )
+     if section_info is not None:
+         try:
+             return _cpu_mxfp8_golden_sectioned(
+@@ -1447,6 +1451,8 @@
+                 softmax_scale=softmax_scale,
+             )
+         except Exception as exc:  # pylint: disable=broad-except
++            if metadata_plan is not None:
++                raise  # Explicit mock plans never fall back to global reference.
+             logger.warning("[Section] 分段 golden 计算失败(%s), 回退全局量化语义", exc)
+ 
+     # GQA: 广播 K/V 到与 Q 相同的 head 数
+--- a/attention/quant_flash_attn/tests/assets/impl/npu_preprocess.py
++++ b/attention/quant_flash_attn/tests/assets/impl/npu_preprocess.py
+@@ -22,6 +22,7 @@
+ """
+ 
+ import logging
++import os
+ 
+ import torch
+ 
+@@ -279,6 +280,11 @@
+     flash_mla 资产); 静态槽位 (旧 (0,) 占位或已有 Tensor):
+     原地 resize_/copy_ 回填并隐式返回 None。
+     """
++    # QFA_MOCK_ASSETS_V1: native metadata remains the default when unset.
++    _qfa_mock_request = None
++    if os.environ.get("QFA_METADATA_CONFIG"):
++        from qfa_mock.assets import request
++        _qfa_mock_request = request(locals())
+     if quant_mode is None:
+         quant_mode = get_attribute(kwargs, "quant_mode", 1)
+     # 位置标量参数桥接进 kwargs, 供 build_metadata_arguments 统一读取。
+@@ -360,13 +366,20 @@
+         seqused_kv,
+         hook_kwargs,
+     )
++    metadata_builder = run_metadata
++    if _qfa_mock_request is not None:
++        from qfa_mock.assets import device_metadata
++
++        def metadata_builder(arguments, anchor):
++            return device_metadata(_qfa_mock_request, arguments, anchor)
++
+     # 动态槽位 (CSV tensor_view_shapes 含 -1, ttk 传入 None): 按参数名物化并返回,
+     # 由 ttk 回填主算子调用 (参考 flash_mla 资产: 返回
+     # {"metadata": generated}, 键必须是 API 参数名);
+     # 静态槽位 (旧 (0,) 占位或已有 Tensor): 原地 copy_ 回填并返回 None。
+     # run_metadata 需要设备锚点 tensor, 动态槽位下用 q 提供 device。
+     if metadata is None:
+-        generated = run_metadata(arguments, q)
++        generated = metadata_builder(arguments, q)
+         logging.info(
+             "[%s] materialize dynamic metadata slot: shape=%s",
+             testcase_name,
+@@ -374,7 +387,7 @@
+         )
+         return {"metadata": generated}
+ 
+-    generated = run_metadata(arguments, metadata)
++    generated = metadata_builder(arguments, metadata)
+     if tuple(metadata.shape) == (0,):
+         metadata.resize_(generated.shape)
+     if tuple(metadata.shape) != tuple(generated.shape):

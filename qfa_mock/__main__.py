@@ -19,9 +19,10 @@ def main():
     parser.add_argument("--verbose", action="store_true")
     commands = parser.add_subparsers(dest="command", required=True)
     build = commands.add_parser("build", help="explicitly compile original scheduler headers")
-    build.add_argument("--repo", required=True, help="include root containing attention/; no Git history or assets required")
+    build.add_argument("--repo", required=True, help="source root containing attention/; Git history is not required")
     build.add_argument("--output", default=str(ROOT / "build/metadata_helper"))
     build.add_argument("--compiler", default="c++")
+    build.add_argument("--compile-only", action="store_true", help="check compilation headers only; omit assets/AICPU reference readiness checks")
     generate = commands.add_parser("generate", help="generate and validate a new output bundle")
     generate.add_argument("--repo", required=True)
     generate.add_argument("--helper", default=str(ROOT / "build/metadata_helper"))
@@ -38,7 +39,7 @@ def main():
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     try:
         if args.command == "build":
-            result = build_helper(args.repo, args.output, args.compiler)
+            result = build_helper(args.repo, args.output, args.compiler, compile_only=args.compile_only)
         elif args.command == "generate":
             if not args.config:
                 fail("MISSING_CONFIG", "provide --config or QFA_METADATA_CONFIG; mock never auto-selects a device")
@@ -66,7 +67,12 @@ def main():
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (MockError, OSError, ValueError) as error:
-        print(canonical({"error": {"code": getattr(error, "code", "IO_OR_FORMAT_ERROR"), "message": str(error)}}), file=sys.stderr)
+        details = {"code": getattr(error, "code", "IO_OR_FORMAT_ERROR"), "message": str(error)}
+        if hasattr(error, "missing"):
+            details.update(repo=error.repo, missing=error.missing)
+            print(json.dumps({"error": details}, ensure_ascii=False, indent=2), file=sys.stderr)
+        else:
+            print(canonical({"error": details}), file=sys.stderr)
         return 1
 
 

@@ -1,4 +1,7 @@
-test_missing_headers_report_compiler_error_and_preserve_previous_output (test_build.BuildTests.test_missing_headers_report_compiler_error_and_preserve_previous_output) ... ok
+test_additional_missing_include_is_reported_by_compiler (test_build.BuildTests.test_additional_missing_include_is_reported_by_compiler) ... ok
+test_all_missing_sources_are_listed_and_previous_output_is_preserved (test_build.BuildTests.test_all_missing_sources_are_listed_and_previous_output_is_preserved) ... ok
+test_cli_missing_report_is_structured_and_complete (test_build.BuildTests.test_cli_missing_report_is_structured_and_complete) ... ok
+test_default_readiness_check_does_not_require_git (test_build.BuildTests.test_default_readiness_check_does_not_require_git) ... ok
 test_only_actual_headers_are_needed_without_git_or_assets (test_build.BuildTests.test_only_actual_headers_are_needed_without_git_or_assets) ... ok
 test_primary_adapter_does_not_import_legacy_patch_or_loader_modules (test_build.BuildTests.test_primary_adapter_does_not_import_legacy_patch_or_loader_modules) ... ok
 test_cached_impl_from_other_checkout_is_not_overwritten (test_lifecycle.LifecycleTests.test_cached_impl_from_other_checkout_is_not_overwritten) ... ok
@@ -51,6 +54,6 @@ test_real_golden_baseline_varlen_padding_zero_and_no_stale_context (test_real_py
 test_real_golden_fd_and_multisection (test_real_python.RealPythonTests.test_real_golden_fd_and_multisection) ... ok
 
 ----------------------------------------------------------------------
-Ran 51 tests in 7.318s
+Ran 54 tests in 6.706s
 
 OK

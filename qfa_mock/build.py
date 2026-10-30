@@ -7,11 +7,49 @@ import subprocess
 import tempfile
 import shlex
 
-from .model import ALGORITHM_VERSION, PROTOCOL_VERSION, canonical, fail, load_json
+from .model import ALGORITHM_VERSION, PROTOCOL_VERSION, MockError, canonical, fail, load_json
 
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER_SOURCE = ROOT / "cpp/metadata_helper.cpp"
+
+# These checks describe readiness, not Git identity or compiler fingerprints.
+COMPILE_SOURCES = (
+    "attention/common/op_kernel/load_balance/base_info.h",
+    "attention/common/op_kernel/load_balance/load_balance_common.h",
+    "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k.h",
+    "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k_def.h",
+    "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k_impl.h",
+    "attention/quant_flash_attn/op_host/qfa_adjust_sinner_souter.h",
+    "attention/quant_flash_attn_metadata/op_kernel_aicpu/quant_flash_attn_metadata.h",
+)
+ASSET_SOURCES = tuple("attention/quant_flash_attn/tests/assets/" + name for name in (
+    "spec.py", "impl/golden.py", "impl/npu_preprocess.py", "impl/inputs.py", "impl/compare.py",
+    "impl/graph.py", "impl/metadata_inputs.py", "quant_flash_attn_golden.py",
+    "quant_flash_attn_fp8_golden.py", "quant_flash_attn_hif8_golden.py", "quant_flash_attn_hifp4_golden.py",
+))
+AICPU_SOURCES = ("attention/quant_flash_attn_metadata/op_kernel_aicpu/quant_flash_attn_metadata_aicpu.cpp",)
+
+
+def check_sources(repo, compile_only=False):
+    """List every missing expected file, with purpose and absolute location."""
+    repo = Path(repo).resolve()
+    groups = [("compile", "Host C++ compilation", COMPILE_SOURCES)]
+    if not compile_only:
+        groups += [("assets", "TTK assets, CPU golden and decoder", ASSET_SOURCES),
+                   ("aicpu_reference", "reference for metadata wrapper behavior", AICPU_SOURCES)]
+    missing = [{"group": group, "relative_path": name, "path": str(repo / name), "required_for": purpose}
+               for group, purpose, names in groups for name in names if not (repo / name).is_file()]
+    if missing:
+        lines = [f"Missing {len(missing)} required source file(s) under {repo}:"]
+        lines += [f"[{item['group']}] {item['path']} ({item['required_for']})" for item in missing]
+        lines += ["--repo must point to the source root containing attention/."]
+        if not compile_only and not any(item["group"] == "compile" for item in missing):
+            lines += ["For header-only compilation, use --compile-only; TTK needs assets, while the AICPU cpp is a behavior reference."]
+        error = MockError("SOURCE_MISSING", "\n".join(lines))
+        error.missing = missing
+        error.repo = str(repo)
+        raise error
 
 
 def source_digest(repo, dependencies=None):
@@ -42,8 +80,9 @@ def binary_digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def build_helper(repo, output, compiler="c++"):
+def build_helper(repo, output, compiler="c++", compile_only=False):
     repo, output = Path(repo).resolve(), Path(output).resolve()
+    check_sources(repo, compile_only=compile_only)
     output.parent.mkdir(parents=True, exist_ok=True)
     # Compile to a private path so failed builds cannot damage a working executable.
     with tempfile.TemporaryDirectory(prefix="qfa-build-", dir=output.parent) as directory:
@@ -57,7 +96,7 @@ def build_helper(repo, output, compiler="c++"):
             fail("BUILD_FAILED", "compiler exceeded 120 seconds")
         if result.returncode:
             fail("BUILD_FAILED", result.stderr.strip())
-        # No Git/full-tree preflight: the compiler decides which sources are required.
+        # Only actual compiler inputs enter the fingerprint; readiness files do not.
         entries = shlex.split(depfile.read_text().partition(":")[2].replace("\\\n", " "))
         dependencies = []
         for entry in entries:

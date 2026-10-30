@@ -10,7 +10,9 @@ cd "$QFA_MOCK_ROOT"
 python3 -m qfa_mock build --repo "$QFA_REPO"
 ```
 
-build 不依赖 Git 仓库，不要求 assets 或 AICPU cpp；--repo 只提供 C++ include 根。若缺少真正引用的头文件，编译器会指出具体路径。产物为 build/metadata_helper 和实际依赖清单。默认 c++，可加 --compiler g++；在目标操作系统/架构重建，不直接复制不同平台的可执行文件。
+build 不依赖 Git 仓库。默认检查三类源码：编译头文件、assets/golden、AICPU 参数包装参考 cpp；若缺失，SOURCE_MISSING 会一次列出每项的分组、绝对路径和用途。--repo 应为包含 attention/ 的源码根目录。
+
+只有头文件、希望仅编译时可加 --compile-only，此时跳过 assets/AICPU 参考文件完整性检查；TTK 运行需要 assets，AICPU cpp 用于核对行为。其他实际引用的缺失头文件由编译器指出具体路径。产物为 build/metadata_helper 和实际编译依赖清单。默认 c++，可加 --compiler g++；在目标操作系统/架构重建，不直接复制不同平台的可执行文件。
 
 ## 2. 应用唯一的 assets 补丁
 
@@ -52,7 +54,7 @@ python3 -m qfa_mock generate --repo "$QFA_REPO" \
 python3 -m qfa_mock validate --repo "$QFA_REPO" --bundle out/first-plan
 ```
 
-输出目录必须是新的。metadata.bin 是完整二进制，result.json 给出 Header、shape、摘要和校验结论；request.json/config.json 保存复现输入。build 只需头文件，generate/validate 还会读取原 golden decoder 来做覆盖校验。
+输出目录必须是新的。metadata.bin 是完整二进制，result.json 给出 Header、shape、摘要和校验结论；request.json/config.json 保存复现输入。build 的 --compile-only 模式只需头文件，generate/validate 还会读取原 golden decoder 来做覆盖校验。
 
 ## 5. 直接运行 TTK
 

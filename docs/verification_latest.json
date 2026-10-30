@@ -4,7 +4,7 @@
   "python": "3.12.16",
   "torch": "2.9.0",
   "numpy": "1.26.4",
-  "tests_run": 51,
+  "tests_run": 54,
   "failures": 0,
   "errors": 0,
   "skipped": 0,

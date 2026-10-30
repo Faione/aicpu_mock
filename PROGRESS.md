@@ -4,8 +4,8 @@
 
 ## 本轮完成
 
-- build 直接调用 C++17 编译器，不调用 Git、不扫描完整源码树、不要求 AICPU cpp 或 assets/golden。成功后根据实际编译依赖生成 build_format=2 清单。
-- 已在仅含 7 个项目头文件、无 .git、无 assets、无任何 cpp 的目录中编译并运行 helper，基线二进制摘要正确；路径包含空格也通过。缺少真正头文件时报告编译器错误，不覆盖已有产物。
+- build 不调用 Git；按用户最新要求，默认检查编译头文件、assets/golden、AICPU 参考 cpp 的完整性，逐项列出所有缺失路径及用途。--compile-only 保留仅头文件编译模式。实际编译指纹仍只包含真正引用的头文件和 helper。
+- 已在仅含 7 个项目头文件、无 .git、无 assets、无任何 cpp 的目录中用 --compile-only 编译并运行 helper，基线二进制摘要正确；默认检查会准确报告缺少 assets/AICPU 参考文件。路径包含空格也通过，检查/编译失败不覆盖已有产物。
 - 交付唯一的 patches/qfa_assets_mock.patch，修改三个测试资产。应用工具支持检查、重复应用、撤销，保留 LF/CRLF；无 Git 仓库的目录也可应用（需 git 可执行程序）。
 - impl/golden.py 传递显式分段计划，数值函数跳过设备 metadata 获取并直接传播异常；没有临时替换函数或异常桥接。
 - 预处理选择本地 metadata_builder，沿用原动态槽返回、零长占位、静态检查和 copy。配置缺省走 native，给定无效配置失败；其他量化模式提前拒绝。
@@ -14,7 +14,7 @@
 
 ## 验证
 
-**51 项测试通过，0 失败、0 错误、0 跳过；260 个上游 Python 文件摘要不变。补丁与旧路径六组 Out/LSE 摘要逐项完全一致。**
+**54 项测试通过，0 失败、0 错误、0 跳过；260 个上游 Python 文件摘要不变。补丁与旧路径六组 Out/LSE 摘要逐项完全一致。**
 
 - 补丁在临时复制的上游 assets 应用，不改本地原 assets 或 TTK。
 - 直接调用补丁后的原 Spec，执行基线、变长、padding、零长、FD、多 section 六组数值；mock 计划函数没有被测试替换。

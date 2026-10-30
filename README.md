@@ -41,7 +41,15 @@ python3 -m ttk e2e \
 
 ## build 实际依赖
 
---repo 只是包含 attention/ 的头文件根目录。编译直接调用 C++，不检查 Git 历史、assets、AICPU cpp、golden 或完整源码树；缺少头文件时输出编译器的具体错误。编译成功后根据 -MMD 记录实际头文件和 helper 的摘要，用于运行时失效检查。
+--repo 指向包含 attention/ 的源码根目录，不要求有 Git 历史。默认先检查编译头文件、assets/golden 和 AICPU cpp 是否存在；若缺失，一次列出全部文件的分组、绝对路径和用途，并返回 SOURCE_MISSING，不再只输出笼统的源码缺失提示。这里检查的是文件完整性，不代表源码行为或设备已验收。
+
+只编译 helper、不做 assets/AICPU 参考文件完整性检查时显式使用：
+
+```bash
+python3 -m qfa_mock build --repo "$QFA_REPO" --compile-only
+```
+
+编译头文件仍会检查；其他实际引用但未列入预检查的缺失头文件，由编译器给出具体错误。编译成功后根据 -MMD 记录实际头文件和 helper 摘要；assets/golden、AICPU cpp 不进入编译指纹。
 
 主要依赖是 load_balance 头文件、qfa_adjust_sinner_souter.h、quant_flash_attn_metadata.h。产物为 build/metadata_helper 和 .json 构建清单。升级后重新编译一次；新的 build_format=2 清单只包含编译依赖，旧 metadata bundle/平台摘要需要重新生成。
 

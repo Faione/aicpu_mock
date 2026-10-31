@@ -1,18 +1,22 @@
 # QFA 仿真环境的 Mock AICPU 设计与 Agent 交接
 
-日期：2026-10-29  
-状态：主方案已改为一个 assets 补丁与共享 provider；55 项 CPU 测试通过，build 强制完整性检查并逐项报告缺失，不提供跳过选项。当前决策与实现见第 21 节，真实设备验收未完成。  
+更新日期：2026-10-31  
+状态：当前可部署实现仍为三文件 assets 补丁与共享 provider，55 项 CPU 基线测试通过；第 22 节为独立复核，第 23—24 节为候选分析，第 25 节是下一轮实施计划（仅文档更新、尚未实现）。真实设备验收未完成。  
 仓库：`/Users/fanghaolei/Workplace/agent/ops-transformer`  
 原型：`scratch/qfa-metadata-mock/`  
 当前实现：`/Users/fanghaolei/Workplace/agent/aicore_mock`（远端 `git@github.com:Faione/aicpu_mock.git`）
+
+当前实现与验收清单：[qfa_mock_aicpu_status.md](/Users/fanghaolei/Workplace/agent/ops-transformer/scratch/qfa_mock_aicpu_status.md)。第 17—20 节保留旧外置方案及迭代记录，不能作为当前主路径的部署要求。
+
+阅读顺序：第 1—16 节说明当前基线，第 17—21 节保留演进记录，第 22 节登记已有证据；下一轮实施按第 25 节执行，第 23—24 节作为其方案依据。旧记录中的零修改、跳过构建检查或启动器必选要求不覆盖当前约定。
 
 ## 1. 目标与结论
 
 NPU 仿真环境能够执行 AI Core 内核，不能执行 AICPU。当前 QFA assets 在 golden 计划获取和设备预处理两处依赖 qfa_metadata，因此需要在 Host CPU 上计算兼容的 metadata，供原 golden 和真实 qfa AI Core 内核使用。
 
-推荐新增 **外置 QFA Mock Spec、两个薄适配钩子及共享 metadata provider**，通过 TTK 的 `--plugin` 选择 mock 工作流。原 assets、TTK 和生产算子源码保持原样，继续复用原输入生成、golden 数值计算、metadata 槽回填及精度比较。metadata 计算由已准备好的 CPU mock 或 Host C++ helper 提供。
+当前主方案是 **一个三文件 assets 补丁、共享 provider 与 Host C++ helper**。golden 显式传入 CPU 分段计划，预处理选择本地 metadata 生成函数；不再临时替换模块函数。TTK 使用原 assets 的插件路径，输入生成、Attention 与 LSE 数值计算、槽位回填及精度比较继续复用原实现。
 
-零源码修改的具体接入方案见[第 17 节](#17-外置-spec-零源码修改接入方案)。原方案中直接修改两个 assets 入口、增加显式分支的方式保留为可选集成方案，不是本轮接入的前置条件。
+`QFA_METADATA_CONFIG` 非空时启用 mock；未配置时保持 native，配置无效则失败。补丁由目标项目显式应用，当前工作区原 assets 尚未应用。旧外置 Spec 保留为兼容方案，不与补丁叠加。
 
 本方案只覆盖当前 QFA 场景，不建设通用 AICPU 仿真框架。
 
@@ -22,88 +26,81 @@ NPU 仿真环境能够执行 AI Core 内核，不能执行 AICPU。当前 QFA as
 |---|---|
 | 实现范围 | 第一阶段采用 MXFP8、`quant_mode=1`、正向、Eager；以现有用例为基线扩展参数化 |
 | 目标平台 | 目标信息已知，由用户配置提供；已有目标名称为 mk001，设计核数为 AIC=80、AIV=80 |
-| 原代码改动 | 主方案不修改原 assets、TTK、Torch 算子注册、生产算子 Host 或 AI Core；新增外置插件及适配模块 |
+| 原代码改动 | 交付一个补丁，仅修改三个 assets 文件；TTK、Torch 算子注册、生产 Host 与 AI Core 不改 |
 | 数值参考 | golden 的 Attention 与 LSE 仍由 Host CPU 计算，使用与 qfa 一致的调度计划 |
 | 正式执行 | qfa 仍走真实 Torch、ACLNN、Runtime 与 AI Core 仿真路径 |
 | 输出要求 | 输出与现有 metadata 协议兼容，不能只有相同 shape |
-| 原设计阶段交付 | 当时仅交付设计文档；当前独立原型实现及验收进度见第 18 节 |
+| 当前交付 | 参数化 helper、共享 provider、assets 补丁与应用工具已实现；CPU 复核见第 22 节，设备验收待完成 |
 
 mk001 的名称与 80/80 本身不能决定分块模板。实际实施时，使用用户确认的 SoC 标识、qfa 编译架构和有效核数；本文不将 mk001 自动映射为 arch92。
 
 ## 3. 当前链路与两个接入点
 
-现有标准链路中：
+native 路径在 golden 和预处理阶段各调用一次 qfa_metadata。应用补丁并启用 mock 后，两处改用同一个 CPU provider：
 
 1. TTK 生成 CPU 输入。
-2. golden 请求 qfa_metadata，在 AICPU 生成计划，读回主机并解码，再在 CPU 计算参考 Out、LSE。
-3. 输入写入设备后，`npu_preprocess` 再次请求 qfa_metadata，生成主算子所需的设备 metadata。
-4. qfa 的 AI Core 内核读取 metadata，生成真实 Out、LSE。
+2. golden 从真实形参整理请求，provider 计算或复用 metadata；原 decoder 解码后，将分段计划显式传入 CPU 数值函数，计算 Out、LSE。
+3. 输入写入设备后，预处理独立整理请求，从 provider 取得相同计划，写入目标设备并沿用原槽位逻辑。
+4. 原 qfa AI Core 内核读取 metadata，生成真实 Out、LSE。
 5. Host CPU 比较真实输出与 golden。
 
-两个行为替换点必须同时覆盖。主方案由外置钩子完成替换，不编辑下表中的原文件。
-
-| 文件与入口 | 当前职责 | 外置适配方式 |
-|---|---|---|
-| `attention/quant_flash_attn/tests/assets/quant_flash_attn_golden.py`：`get_qfa_section_info` | 查询分段缓存，必要时调用设备 metadata，再解码 | 在外置 golden 调用期间替换整个计划获取函数，直接解码 provider 的 CPU metadata，绕过原缓存、`_HAS_NPU` 和异常回退 |
-| `attention/quant_flash_attn/tests/assets/impl/npu_preprocess.py`：`run_metadata` | 调用真实 qfa_metadata，返回设备 Tensor | 在外置预处理调用期间替换该函数，从 provider 取得 CPU metadata，写入目标设备并返回设备 Tensor |
-
-使用原 assets 路径启动时继续走现有逻辑；使用外置 Spec 文件启动时覆盖 golden 与预处理钩子。原 `spec.py` 不变，外置 Spec 通过继承复用输入、compare 和容差。
-
-“两处入口”描述需要接管的行为，不代表必须改写两个源文件。请求所需字段从外置钩子实际收到的参数中整理；必要时在外置适配模块补充，不在原文件中添加分支。
-
-## 4. 原型的复用方式
-
-| 原型文件 | 已有价值 | 后续设计要求 |
-|---|---|---|
-| `generate.cpp` | 复用原分块函数、`SectionStreamK::Compute` 和 metadata 格式 | 去掉固定的 batch、长度、head 数、D 和平台参数，改为请求驱动 |
-| `arch92_80_80.bin` | 一个固定用例的候选计划 | 保留为回归样本；不要作为全部用例的运行时返回值 |
-| `mock_spec.py` | 证明外置 Spec 可继承原类并局部替换两个函数 | 作为正式接入适配层的基础，替换固定样例计划，补齐参数、生命周期和配置处理 |
-| `validate.py` | 使用原 decoder 校验任务覆盖 | 参数化校验输入，补充 FD、容量和初始化标志校验 |
-
-原型中的 CPU 编译和覆盖校验不等于新的参数化方案已验收。后续需要重新完成本文件定义的验证。
-
-## 5. 推荐结构
-
-建议新增以下逻辑组件，实际文件可合并：
-
-| 组件 | 责任 |
+| 补丁文件 | 当前 mock 行为 |
 |---|---|
-| 配置读取 | 生成不可变的目标配置，明确 native 或 mock 模式 |
-| 请求整理 | 将两个入口转换为统一的调度请求 |
-| metadata provider | 模式分派、缓存、输出校验和结果交付 |
-| Host C++ helper | 在 CPU 计算分核计划并序列化 metadata |
-| 校验工具 | 格式、覆盖、真实 AICPU 对拍及仿真链路验证 |
+| `impl/golden.py` | 从本次形参构造请求、取得 CPU 计划并解码，显式传给原数值函数；拒绝其他量化模式 |
+| `quant_flash_attn_golden.py` | 接受可选 `metadata_plan`；存在时跳过设备计划获取，分段计算异常直接抛出 |
+| `impl/npu_preprocess.py` | 在本次调用选择本地 `metadata_builder`，保留原动态返回、resize、形状检查与 copy |
 
-provider 和适配器放在外置插件目录，原 assets 中不新增文件。两个入口通过稳定模块名取得同一个 worker 内的 provider 实例，避免懒加载产生两套缓存。注册阶段不初始化 NPU，配置、mock 引擎和原实现模块在 worker 中按需使用。
+未配置 mock 时保留原 native 分支。原 Spec、输入生成和 compare 不改；不使用运行时函数替换或异常桥接。
+
+## 4. 原型与当前实现的关系
+
+| 原型 | 当前结果 |
+|---|---|
+| 固定参数 generate.cpp | 已参数化为独立仓库 Host helper，按本次请求计算 |
+| arch92_80_80.bin | 保留为固定回归样本，运行时不直接套用 |
+| mock_spec.py | 已发展为旧外置兼容方案；当前主方案改用显式 assets 补丁 |
+| validate.py | 已扩展为 provider 中的格式、覆盖、FD 与初始化标志校验 |
+
+当前参数化实现已完成本机 CPU 验证；真实 AICPU 对拍与目标设备验证另列待办。
+
+## 5. 当前结构
+
+| 组件 | 实现与职责 |
+|---|---|
+| assets 补丁 | `patches/qfa_assets_mock.patch`，接入两个计划消费路径 |
+| 显式适配 | `qfa_mock/assets.py`，交付 CPU 分段计划与目标设备 metadata |
+| 请求整理 | `qfa_mock/requests.py`，从本次真实形参生成统一请求 |
+| worker | `qfa_mock/worker.py`，按进程共享 provider，固定配置与构建身份 |
+| provider | `qfa_mock/provider.py`，不可变 bytes 主副本、缓存、校验和独立 Tensor 交付 |
+| Host helper | `cpp/metadata_helper.cpp`，复用分块及 SectionStreamK 算法 |
+| 补丁工具 | `scripts/apply_assets_patch.py`，检查、应用、重复应用检测与撤销 |
 
 ```mermaid
 flowchart LR
-    G[外置 golden 钩子] --> P[metadata provider]
-    N[外置预处理钩子] --> P
-    C[目标配置与调度请求] --> P
-    P -->|缓存命中| M[CPU metadata]
+    G[assets golden] --> P[共享 provider]
+    N[assets 预处理] --> P
+    C[目标配置与实际请求] --> P
     P -->|缓存未命中| H[Host C++ helper]
-    H --> M
-    M --> D[原 decoder → CPU golden]
-    M --> W[写入仿真设备 → 原槽位回填]
-    W --> Q[qfa AI Core 仿真]
+    H --> M[CPU metadata]
+    P -->|缓存命中| M
+    M --> D[原 decoder与CPU golden]
+    M --> W[写入设备并回填槽位]
+    W --> Q[qfa AI Core]
 ```
 
-主方案使用外置 Spec 与有明确作用域的模块函数替换，不替换全局 `torch.ops`，不复制整套 golden 或预处理实现。两个计划接管点分别为 `get_qfa_section_info` 和 `run_metadata`；另允许在 golden 调用期间对 `_cpu_mxfp8_golden_sectioned` 增加异常保护，阻止原实现失败后回退。三处均串行保护，退出时恢复，具体约束见第 17.8 节。
+主路径不加载旧外置 Spec、runtime loader 或临时函数替换；旧模块继续保留兼容回归。
 
 ## 6. 配置设计
 
-使用 `--plugin` 选择原生或 mock 工作流；外置 mock 插件通过环境变量 `QFA_METADATA_CONFIG` 读取目标配置，不增加 TTK 参数，也不在每条 CSV 用例重复配置平台。
-
-首版沿用已实现的 JSON 配置与进程内缓存；YAML 和持久化缓存不列为接入前置条件。以下目标字段仍须按部署环境确认：
+TTK 的 `--plugin` 始终选择已应用补丁的原 assets。使用 `QFA_METADATA_CONFIG` 控制 mock；同时设置 `QFA_REPO`、`QFA_MOCK_HELPER`，通过 `PYTHONPATH` 提供 `qfa_mock`。完整操作见独立仓库 [ASSETS_USAGE.md](/Users/fanghaolei/Workplace/agent/aicore_mock/ASSETS_USAGE.md)。
 
 ```json
 {
   "backend": "mock_aicpu",
   "target": {
     "name": "mk001",
-    "soc_version": "<用户确认的元算子 SoC 标识>",
-    "kernel_arch": "<用户确认的 qfa 编译架构>",
+    "soc_version": "<目标实际调度 SoC 标识>",
+    "kernel_arch": "<目标实际 qfa 编译架构>",
     "aic_core_num": 80,
     "aiv_core_num": 80
   },
@@ -111,17 +108,12 @@ flowchart LR
 }
 ```
 
-配置语义：
-
-- `--plugin` 指向原 assets 时走 native，原代码不需要识别新配置。
-- `--plugin` 指向外置 Spec 时走 mock，必须提供有效配置且 `backend=mock_aicpu`；配置缺失或错误时失败，不自动调用真实 AICPU。
-- 模式不依据 `torch.npu.is_available()` 自动选择。
-- SoC 标识用于选择与原 metadata 一致的调度策略；编译架构用于检查与 qfa 模板的兼容性。
-- AIC、AIV 是本次执行的有效 Cube、Vector 核数，不是 AICPU 核数。
-- M、S2、FD、各核任务区间由算法推导，不要求用户填写。
-- 算法内部的 L2 分段与 FD 参数按当前源码策略确定，不直接拿用户填写的硬件容量替换代码中的策略常量。
-
-配置仅为 mock 提供计算输入，不会改变 qfa 的 CANN 平台配置。进入主算子执行前，应检查目标架构、有效核数和分块规则与实际 qfa tiling 一致。CPU helper 自身不依赖设备属性查询；设备接入可使用可信的运行时查询，或绑定本次仿真与 qfa 构建的离线平台记录完成检查。查询不可用不直接判定配置错误；两种证据均缺失则停止设备执行。核对规则见第 19 节评审文档。
+- 未设置或设为空字符串：保留 native；非空但配置错误、helper 失败或请求不支持：直接失败。
+- SoC、架构与有效核数由用户配置提供；不能用 mk001 或 80/80 自动推断调度架构。
+- AIC、AIV 分别是有效 Cube、Vector 核数；M、S2、FD 和区间由算法计算。
+- 首版使用 JSON 与进程内缓存；YAML、持久化缓存后置。
+- 配置不会改变 CANN 平台或 qfa tiling。主路径只对可取得的设备容量做检查；首次目标执行仍须核对真实 tiling 与 Out、LSE。
+- 旧平台证据工具为可选诊断，不是新主路径的启动要求，也不再要求使用专门启动器。
 
 ## 7. 统一调度请求
 
@@ -147,7 +139,7 @@ flowchart LR
 
 ## 8. Host C++ helper 的计算过程
 
-继续使用纯 Host C++ helper，测试前编译完成。首版建议沿用独立可执行程序形式，由 provider 传入请求并接收结果，不在用例执行过程中编译，不引入 Torch C++ 扩展构建流程。
+当前采用纯 Host C++ 独立可执行程序，在测试前编译完成。由 provider 传入请求并接收结果，不在用例执行过程中编译，不依赖 Torch C++ 扩展构建。
 
 helper 不能直接编译调用依赖 `CpuKernelContext` 的 AICPU 入口。应复用纯算法头文件，并对包装层的参数整理、初始化判断和序列化实现 Host 等价适配。
 
@@ -166,7 +158,7 @@ helper 不能直接编译调用依赖 `CpuKernelContext` 的 AICPU 入口。应�
 
 ### helper 的交付约定
 
-- 输入：目标配置与统一调度请求，建议使用结构化 JSON。
+- 输入：公开接口使用 JSON 配置与请求；provider 将规范化输入转换为版本化的 C++ 私有文本协议。
 - 输出：metadata 二进制及摘要，至少记录 shape、有效长度、平台、请求摘要和算法版本。
 - 二进制：明确使用 little-endian int32 表示；内部字段仍按原协议的 uint32 位模式处理。
 - 失败：返回清楚的错误原因，provider 将当前用例判为失败。
@@ -217,24 +209,21 @@ rowSize = 按 4096 个元素向上对齐(
 
 ### golden
 
-1. 外置 golden 钩子绑定本次实际参数，整理调度请求。
-2. 在原 CPU golden 调用期间，将其使用的 `get_qfa_section_info` 替换为 mock 回调。
-3. 回调从 provider 取得 CPU metadata，使用原 `_decode_qfa_sections` 解码。
-4. 原 CPU golden 按分段计算 Out、LSE；异常保护阻止其内部全局回退，退出作用域后恢复计划入口与保护函数。
+1. 补丁从当前真实形参构造请求。
+2. provider 生成或复用 CPU metadata；校验实际 Q、KV 有效长度后调用原 decoder。
+3. 将解码结果通过 `metadata_plan` 显式传入原 CPU 数值函数。
+4. 显式计划模式跳过 `get_qfa_section_info`，分段计算异常直接向上抛出；成功返回原 Out、LSE 结构。
 
-整个原计划获取函数被替换，因此原缓存、`_HAS_NPU`、设备计划获取和失败回退均不会参与 mock 路径。
-
-mock 计算失败时直接报错，不进入原来的“设备 metadata 失败后改用全局参考计算”分支。否则测试可能使用不同的量化分段而继续运行。
+不再安装或恢复函数替换，也不需要内部 `BaseException` 跨越 fallback。
 
 ### npu_preprocess
 
-1. 外置预处理钩子绑定实际参数并整理请求。
-2. 在原 `run` 调用期间，将原模块的 `run_metadata` 替换为 mock 回调。
-3. 回调从 provider 取得 CPU metadata，将内容写入目标仿真设备，返回与设备锚点同设备的 Tensor。
-4. 原 `run` 继续处理动态槽返回、`(0,)` 占位调整、静态槽形状检查和 `copy_` 回填。
-5. 外置钩子原样返回原 `run` 的结果，并恢复被替换函数；TTK 再调用原 qfa。
+1. 补丁从本次真实形参构造请求，继续调用原参数整理函数。
+2. 本次调用选用本地 `metadata_builder`；再次核对整理后的请求，与 golden 使用同一 provider。
+3. 取得 CPU metadata，经可用容量检查后写入 `anchor.device`。
+4. 原 `run` 继续处理动态槽字典返回、`(0,)` 调整、静态形状检查与 copy。
 
-只修改预处理一处不能消除 golden 的 AICPU 依赖；只替换 golden 也不能阻止预处理提交真实 metadata 任务。
+关闭 golden 时预处理仍独立生成计划。未配置 mock 时继续选择原 `run_metadata`。
 
 ## 11. 缓存与一致性
 
@@ -247,7 +236,7 @@ mock 计算失败时直接报错，不进入原来的“设备 metadata 失败�
 - 原始长度数组的实际值，不能只使用 shape 或最大值。
 - 算法版本、metadata 格式版本。
 
-缓存未命中时计算，命中时复用。关闭 golden 后，预处理仍应能够独立生成计划。目标或长度变化时必须失效。
+缓存未命中时计算，命中时复用。关闭 golden 后预处理仍独立生成计划。长度变化使用新缓存键；同 worker 改变目标或构建身份则失败，重新启动 worker 后使用新身份。
 
 两个请求字段不同，不能仅因用例名称相同而强行返回同一缓存条目。发现 golden 与预处理本应一致的请求出现差异时，应报告具体字段，而不是掩盖差异。
 
@@ -255,8 +244,8 @@ mock 计算失败时直接报错，不进入原来的“设备 metadata 失败�
 
 | 情况 | 处理 |
 |---|---|
-| 配置缺失 | 原 assets 路径继续 native；外置 mock 插件缺少有效配置时失败 |
-| 架构、核数与 qfa tiling 不一致 | 在主算子执行前失败，列出双方配置 |
+| 配置缺失 | 补丁主路径继续 native；非空配置无效时失败，不能回退 |
+| 已知平台冲突 | 主路径检测到目标核数超出可查询容量时失败；架构和有效 tiling 仍需目标验收，不能宣称已自动确认 |
 | 属性或布局尚未支持 | 明确拒绝，不读取固定样例计划代替 |
 | 请求缺字段或默认值不一致 | 报告字段及来源 |
 | helper 失败、输出容量不足或格式错误 | 当前用例失败，不回退真实 AICPU |
@@ -294,17 +283,15 @@ mock 计算失败时直接报错，不进入原来的“设备 metadata 失败�
 
 未开启 mock 时，原 native 流程保持现有行为。缓存不能跨目标配置或算法版本复用。
 
-## 14. 建议实施顺序
+## 14. 当前部署与验收顺序
 
-1. 确定首批支持的目标配置和用例集合。
-2. 定义目标配置、调度请求、结果摘要与错误约定。
-3. 参数化原型 C++ helper，补齐初始化判断、序列化及容量校验。
-4. 实现 provider 与进程内缓存。
-5. 新增外置 Spec 与两个薄钩子，核对参数来源、懒加载、替换恢复和串行保护。
-6. 完成 CPU 校验、原 hook 和真实 CPU golden 接入；真实 AICPU 对拍与目标平台准备可并行推进。
-7. 完成目标仿真的 qfa Out、LSE 比较，单独记录真实对拍是否完成。
+1. 在目标操作系统与 CPU 架构上 build helper；缺少编译头文件、assets/golden 或 AICPU 参考 cpp 时立即失败，一次列出全部缺失项，不提供跳过选项。
+2. 检查并应用唯一的 assets 补丁，配置真实目标和 Python 导入路径。
+3. 通过原 assets 的 Spec 执行 TTK；核对两个计划入口的请求与 metadata 摘要。
+4. 在目标环境核对实际 qfa tiling、metadata 写入与 AI Core 仿真，分别比较 Out、LSE。
+5. 在支持 AICPU 的环境完成同配置对拍；与目标不同的平台单独登记，不充当 mk001 对拍。
 
-后续 agent 应先核对本地源码与本设计是否仍一致，再根据用户后续指令评审或实施。仓库存在 `.codegraph/` 时，遵循用户要求，先使用 CodeGraph 定位和理解代码。
+本机已完成的 CPU 项目与证据见第 22 节。当前工作区原 assets 未自动应用补丁。
 
 ## 15. 源码导航
 
@@ -336,22 +323,26 @@ mock 计算失败时直接报错，不进入原来的“设备 metadata 失败�
 | TTK 的继承属性读取 | [get_spec_attr](/Users/fanghaolei/Workplace/agent/ops-test-kit/ttk/core_modules/common/plugin/spec_manager.py:64) |
 | CPU、AICPU、AI Core 分工依据 | [qfa_ttk_multi_round_analysis.md](/Users/fanghaolei/Workplace/agent/ops-transformer/scratch/qfa_ttk_multi_round_analysis.md) |
 
-## 16. 交接完成检查
+## 16. 当前交接检查
 
-- [ ] 目标 SoC、编译架构与有效核数已明确。
-- [x] 首批支持的用例属性与布局已列出。 已在独立仓库 README / CONTRACT 列出；仅首版支持范围。
-- [x] 两个入口的请求字段来源与默认值已对齐。 已支持组合的适配一致性通过 CPU 测试；未宣称全部原生组合支持。
-- [x] provider 不依赖设备查询才能生成 mock 计划。 Host CLI 已在无 Torch/CANN 环境运行。
-- [x] Host helper 覆盖分块、调度、初始化判断和完整 metadata 编码。 首版 D=128、MXFP8 正向范围，Header / FA / FD 已验证。
-- [ ] golden 直接消费 CPU metadata，预处理将相同内容写入设备。 CPU 控制流与替身已验证；真实 H2D 未验收。
-- [x] 缓存键包含目标、实际长度数组、属性和算法版本。 另含源码指纹，保留原始分配长度。
-- [x] mock 错误不会触发真实 AICPU 或全局参考回退。 原函数 CPU 链路、真实 TTK SpecLoader 与恢复/失败检测已验证；设备验收另见第 20 节。
-- [ ] CPU 结构校验、真实对拍、仿真 Out 与 LSE 验证均有记录。 18 项 CPU 测试通过；真实 AICPU 对拍及仿真精度未运行。
-- [ ] 原 assets 与 TTK 无源码改动；native 模式保持现有行为。 本轮测试前后 21 个相关上游文件摘要不变；native 单独启动未验收。
-- [x] 外置 Spec 覆盖两个钩子，局部替换在成功和异常路径均恢复。 原函数 CPU 链路、真实 TTK SpecLoader 与恢复/失败检测已验证；设备验收另见第 20 节。
-- [x] 外置插件实际选中、源模块路径和 mock 调用摘要均可追踪。 原函数 CPU 链路、真实 TTK SpecLoader 与恢复/失败检测已验证；设备验收另见第 20 节。
+- [x] 参数化 Host helper、完整 metadata 编码和结构校验。
+- [x] 真实参数整理、共享 provider、不可变缓存和 worker 配置固定。
+- [x] 三文件补丁与检查、重复应用、撤销工具。
+- [x] 补丁后的原 CPU golden：基线、变长、padding、零长、FD、多 section。
+- [x] 原预处理 CPU 槽位矩阵：动态、零长占位、静态匹配和不匹配。
+- [x] mock 错误直接失败；未配置时保留 native 分支选择。
+- [x] 真实 TTK SpecLoader 发现补丁后的原 Spec。
+- [x] 本次 55 项 CPU 测试通过，260 个上游 Python 文件摘要不变。
+- [ ] 当前工作区正式应用补丁：尚未执行，只完成适用性检查与临时副本验收。
+- [ ] mk001 调度 SoC、架构及实际有效核数确认。
+- [ ] 真实 AICPU 同配置对拍。
+- [ ] metadata 实际写入仿真设备、qfa tiling 与 AI Core Out/LSE 精度验证。
 
-## 17. 外置 Spec 零源码修改接入方案
+第 17—20 节保留旧方案及历史快照；其中原 assets 零修改、三处局部替换、强制离线记录等要求不再适用于补丁主路径。
+
+## 17. 兼容方案：外置 Spec 零源码修改接入
+
+本节仅适用于未应用补丁的旧外置兼容路径，不与新主方案叠加。
 
 ### 17.1 接入决策与可行性
 
@@ -625,7 +616,7 @@ python3 -m ttk e2e \
 
 ## 20. 实现完成与验收更新（2026-10-29）
 
-最新实现与验收记录位于独立仓库，详细见 [PROGRESS.md](/Users/fanghaolei/Workplace/agent/aicore_mock/PROGRESS.md)。第 18 节保留为上一轮快照，本节为当前状态。
+最新实现与验收记录位于独立仓库，详细见 [PROGRESS.md](/Users/fanghaolei/Workplace/agent/aicore_mock/PROGRESS.md)。第 18 节与本节均保留为旧外置方案的历史快照，当前主方案见第 21—22 节。
 
 ### 20.1 已完成
 
@@ -710,3 +701,262 @@ mk001 的真实 SoC/架构/有效核数与安装映射待部署方确认。真�
 这三组文件是交付构建的强制前置条件；实际 C++ 编译依赖摘要仍由编译器生成。build 不调用 Git，也不要求 .git 或提交历史。TTK 使用流程保持不变。
 
 验收覆盖完整源码无 Git 构建、带空格路径、逐类删除必需文件时禁止启动编译器、旧产物保留、CLI 拒绝跳过参数。当前 55 项 CPU 测试通过，0 失败/错误/跳过；260 个上游 Python 文件不变。真实设备验收仍未完成。
+
+
+## 22. 当前实现独立复核（2026-10-30）
+
+已核对独立仓库当前提交 `eef4af53c868dc3eaa23b81f54b3510f0e323a95`，工作区干净；本次没有更新或切换其代码。完成清单与操作入口见 [qfa_mock_aicpu_status.md](/Users/fanghaolei/Workplace/agent/ops-transformer/scratch/qfa_mock_aicpu_status.md)。
+
+本次使用仓库已有 CPU 环境复跑 55 项测试，0 失败、0 错误、0 跳过；补丁路径与旧路径六组 Out/LSE 摘要一致，260 个上游 Python 文件测试前后未变。补丁在临时副本应用；对当前仓库执行 `--check` 返回 `Patch can be applied`，原 assets 尚未正式应用。
+
+新增独立证据：[verification_latest.json](/Users/fanghaolei/Workplace/agent/ops-transformer/scratch/qfa_mock_verification_20261030/verification_latest.json)、[cpu_tests_latest.txt](/Users/fanghaolei/Workplace/agent/ops-transformer/scratch/qfa_mock_verification_20261030/cpu_tests_latest.txt)。本机验证包含真实 CPU Tensor、原数值函数和真实 SpecLoader，但未执行完整 TTK e2e、真实 metadata 设备写入、AICPU 对拍或 AI Core 仿真。
+
+## 23. metadata 生产入口的进一步收敛（2026-10-30）
+
+本节为设计优化，尚未修改实现。当前已验收基线仍是第 22 节的三文件补丁与 55 项 CPU 测试。
+
+### 23.1 是否只需替换 run_metadata
+
+**仅针对设备预处理，是；针对开启 golden 的完整 e2e，不够。**
+
+| 路径 | 计划生产入口 | 处理决策 |
+|---|---|---|
+| 设备预处理 | `impl/npu_preprocess.py::run_metadata(arguments, anchor)` | 用 CPU mock 的设备 Tensor 替代其返回值；保留原 run 的槽位逻辑 |
+| CPU golden | 原数值模块的 `_build_qfa_section_info` 独立调用 metadata 算子 | 继续使用当前补丁的显式 CPU 分段计划，跳过原设备获取路径 |
+
+只替换预处理的 run_metadata 不会覆盖 golden 中的 `.npu()`、真实 metadata 调用和同步。关闭 golden 时可以单独验证设备预处理接入；这不等于完成 Out、LSE 的参考值精度验证。
+
+### 23.2 预处理的最小行为契约
+
+替代的计划生产函数只负责生成一个返回值：**与原协议一致、连续、int32、位于 anchor.device 的 metadata Tensor**。CPU provider 的缓存主副本仍留在 CPU；设备写入由适配层完成。
+
+原 run 保留以下行为：
+
+| 输入槽位 | 计划生产函数的锚点 | 原 run 后续处理 |
+|---|---|---|
+| None | Q | 返回 `{"metadata": generated}`，由 TTK 回填 |
+| `(0,)` 空 Tensor | 该 metadata Tensor | resize 后 copy，返回 None |
+| 固定形状 Tensor | 该 metadata Tensor | 完整形状匹配后 copy，返回 None |
+
+三个分支均生成计划。已有 Tensor 的非零内容不作为跳过计算或切换 mock 的依据；固定形状不匹配继续报错。无需改 CSV 的槽位规则、TTK 的参数装配、预处理回填协议或主 qfa 算子。
+
+### 23.3 当前补丁已经满足“单个生产接入点”
+
+当前 `metadata_builder` 在两个槽位分支前选择一次，两个分支共同调用它。这已经等价于替换 run_metadata 的生产职责，并未重写整个预处理工作流。
+
+推荐继续保留这个实现结构。将分派从 metadata_builder 移入 run_metadata 内部可以作为小型重构，但不会减少 golden 这个消费入口，也不会减少核心 mock 算法。不要为统一函数名重新引入运行时函数替换或全局 torch.ops 劫持。
+
+若实施函数内部的 native/mock 分派，应保留完整请求入口，例如让 run_metadata 接受可选的 keyword-only `mock_request`。run 仍负责从真实形参构造和校验请求，再交给生产函数。现有两参数形式可用于 native；mock 模式若缺少完整请求上下文应报错，不能猜测。
+
+原因是原 `build_metadata_arguments` 不包含 win_left、win_right 和 is_grad_enabled，也没有完整 QKV、V-tail、mask 槽位信息。它足以调用现有 native 默认路径，但仅凭这个字典不能完成当前 mock 的所有支持范围检查。例如非默认窗口或非空 V-tail，不能在关闭 golden 后被静默忽略。
+
+### 23.4 保留 golden 的最小接入
+
+继续沿用当前显式路径：真实 golden 形参 → 统一请求 → 同一 provider → CPU metadata → 原 decoder → `metadata_plan` → 原 CPU 数值函数。
+
+这一路不调用设备版 run_metadata，不为获取计划先将长度写入 NPU，也不把 metadata 读回 CPU。显式计划计算失败直接抛出，保留现有“失败不回退全局参考”的行为。
+
+最终结构是：**一个共享 metadata 生产者，两个消费入口**。golden 消费 CPU 计划，预处理消费同一计划的设备 Tensor；不是一个 run_metadata 函数自动覆盖整个 e2e。
+
+### 23.5 若做入口重构，需保持的检查
+
+- 原动态、零长占位、静态匹配与不匹配行为不变；已有非零 Tensor 仍走生产入口。
+- 非空配置无效、helper 或 decoder 失败时直接失败，无真实 AICPU 回退。
+- golden 关闭时仍独立校验请求，拒绝非默认窗口、非空 V-tail 等当前未支持组合。
+- 两个入口使用相同请求与计划摘要，Out、LSE 与当前已验收基线一致。
+- 测试中将原生 metadata 调用设为触发即失败，分别覆盖 golden 与设备预处理。
+
+该优化不解决上游 AICPU 包装逻辑跨版本漂移或目标 tiling 兼容性，仍需单独验证。
+
+## 24. 候选方案：在 quant_flash_attn_metadata 接口统一 mock（2026-10-30）
+
+本节为可行性设计，尚未实现或验收。当前交付仍是第 21—22 节的三文件 assets 补丁；本方案若落地，需要调整改动范围到 Torch 扩展的 Python 实现层。
+
+### 24.1 共同入口与实际调用区别
+
+| 消费方 | 当前调用形式 | 路由 |
+|---|---|---|
+| npu_preprocess | `torch.ops.cann_ops_transformer.quant_flash_attn_metadata(...)` | Torch dispatcher → PrivateUse1 注册的 Python 实现 |
+| golden | `from cann_ops_transformer.ops import quant_flash_attn_metadata` | 包导出的 Python 实现函数，直接调用，不经过上述 dispatcher 入口 |
+
+`attention/quant_flash_attn/torch_extension/__init__.py` 导出该 Python 函数；扩展模块同时用 `@impl(..., "PrivateUse1")` 注册它。因此，修改同一 Python 实现函数体，在进入原生输出分配和扩展加载前增加 mock 分支，可以覆盖两条调用形式。
+
+仅替换 torch.ops 属性、仅新增 CPU kernel 或仅改 dispatcher 注册项，不能据此认为已覆盖 golden 的直接 Python 调用。仅替换包导出变量，也不能保证修改 dispatcher 保存的原函数对象或其他模块已导入的别名。
+
+### 24.2 建议的算子接口契约
+
+保留原算子名称、schema、Python 签名及默认值规则；共同 Python 实现根据显式配置选择：
+
+```text
+quant_flash_attn_metadata Python 实现
+  ├─ 未启用 mock：原校验、分配、C++ 扩展与 ACLNN 路径
+  └─ 启用 mock：规范化接口实参 → 共享 provider → Host helper
+                 → 校验 CPU metadata → 按原设备语义返回 NPU Tensor
+```
+
+mock 分支必须位于原 `_calculate_max_schedule_size`、NPU 输出分配和 `op_builder.load()` 之前，使用配置的目标核数决定容量。不能先按实际设备核数分配，再修改 Header 或向固定大小输出强行复制。
+
+返回值仍是连续 int32 metadata Tensor，不返回字典。None、零长与静态槽位继续由原 npu_preprocess.run 处理。provider 内部继续缓存不可变 CPU 主副本，接口适配层按原输出设备语义转换；不能为了 golden 方便而让 NPU 动态槽位收到 CPU Tensor。
+
+此处 mock 必须实际计算 Header、FA、FD。现有 Meta/Fake 实现仅用于 shape/dtype 推导，不能替代真实 metadata 内容计算。首版仍只覆盖既定 MXFP8 正向 Eager 范围，不因此扩展图模式。
+
+### 24.3 能减少的改动与仍需处理的行为
+
+共同接口可以统一替代两处原生 metadata 计算；assets 中不再分别实现一套 metadata 生产算法。现有 provider 与 helper 无需重写。
+
+但不能据此认定整个 assets 完全不需要适配：
+
+- 原 golden 在调用前执行 `_HAS_NPU` 判断、长度 Tensor 写入 NPU，调用后又同步并将计划读回 CPU。接口 mock 只消除真实 AICPU 计算，这些操作仍保留；若要求纯 CPU golden 获取计划，还需修改调用侧。
+- 原 golden 的计划获取和分段数值计算都有异常回退。mock 模式应明确传播错误，不能回退全局参考。当前显式 metadata_plan 解决的严格失败行为必须有等价替代，不能直接删除相关保护。
+- 原 golden 分段缓存没有目标、backend 和算法身份。新模式需绕过该缓存或完善其键；不允许同 worker 切换目标后复用旧分段。
+- metadata 接口只知道调用方实际传来的参数，不能发现主 qfa 调用中未传到 metadata 的信息。原预处理还存在窗口字段未完整传递等问题；完整用例范围检查仍需保留或补齐，不能依赖接口 mock 自动获知。
+- 原 golden 与预处理对默认最大长度等参数的处理并非对所有原生组合都一致。仍需保持首版显式正最大长度等约束，并核对两个入口的规范化请求摘要。
+
+对于当前目标，只要求仿真环境不执行 AICPU、且已有可用 NPU Runtime 的场景，可以评估保留原 golden 的设备传输；纯 CPU 环境执行原 golden 并不是这个单点 mock 自动支持的能力。
+
+### 24.4 接入与验收
+
+启用应在 worker 首次调用前完成，并在本 worker 固定模式与目标。未启用时保持 native；启用后配置或计算失败必须报错，不回落真实 AICPU。同一 worker 不混跑 native 和 mock。
+
+独立验证包导出函数直调和 torch.ops 两种调用，记录二者均进入同一 mock provider；原生 C++ metadata 入口触发即失败，qfa 主算子仍使用原实现。覆盖已确定槽位矩阵、同请求同计划、golden 关闭、配置失效、错误传播及缓存隔离；最后验证目标 AI Core 的 Out、LSE。
+
+本方案与当前三文件补丁应作为两套明确的接入模式评估，不能叠加后因 golden 被旧补丁短路而误判“共同入口已覆盖两条调用”。推荐先完成上述入口与严格失败验证，再决定是否替换已验收方案。
+
+### 24.5 对当前仿真环境的结论与最小落地范围
+
+**可以用同接口的 CPU mock 替代当前已确认的 qfa_metadata AICPU 调度计算；尚不能把这一结论记为完整仿真已通过。** 推荐复用现有 provider 与 Host helper，通过共同 Python 实现选择 native 或 mock，不再开发第二套分核算法。
+
+当前问题分成以下条件：
+
+| 条件 | mock 接口能否处理 | 当前证据 |
+|---|---|---|
+| 仿真无法执行 qfa_metadata 的 AICPU kernel | 能：CPU 计算完整计划，不提交原生 metadata 任务 | helper 与当前 assets 补丁 CPU 路径已验证；共同接口候选尚未实现 |
+| golden 与预处理分别获取计划 | 能：包导出函数与 dispatcher 最终进入共同 Python 实现 | 已核对源码及导出、注册关系 |
+| TTK 的动态、零长和静态槽位 | 能保留原逻辑：mock 返回兼容的设备 Tensor | 当前补丁已通过 CPU 槽位矩阵；共同接口需重新验证 |
+| torch_npu 导入、NPU 可用性、分配、传输、同步 | 接口 mock 不提供这些能力 | 必须由目标仿真 Runtime 支持；不能仅凭“可模拟 AI Core”推定已齐备 |
+| mock 计划与真实 qfa 模板匹配 | 不能自动保证 | 需确认目标 SoC、架构、有效核数并核对实际 tiling |
+| Out、LSE 精度 | 不能由接口替换本身保证 | 目标仿真未验收；同配置 AICPU 对拍也未完成 |
+
+最小落地分成一个生产入口和必要的调用侧保护：
+
+1. 在共同 Python 实现中，进入原容量分配、C++ 扩展加载及 ACLNN 调用前，转入 CPU provider；返回与原调用设备语义一致的 int32 metadata Tensor。
+2. golden 导入失败或 NPU 不可用时，mock e2e 必须明确失败，不得因 `_HAS_NPU=False` 静默选择全局参考。该检查应在 worker 中、仿真环境配置生效后完成；只注册算子不能保证原导入链成功。
+3. golden 获取计划与分段数值计算的异常，在 mock 模式直接向上抛出。绕过或完善原分段缓存，避免绕过新接口或复用其他目标的旧计划。
+4. 保留两端请求一致性、支持范围及目标配置固定检查。当前固定的正最大长度、默认窗口等约束继续有效；metadata 接口无法感知调用方未传入的属性。
+5. 原 npu_preprocess.run、TTK 参数回填及 qfa AI Core 保持原路径。CSV 固定 metadata 形状必须匹配目标容量；优先使用当前已支持的动态槽位，不能为迁就旧静态形状截断计划。
+
+在有可用 NPU Runtime 的当前仿真目标上，原 golden 的长度写入、同步和计划读回可以先保留，这些操作不等于执行 qfa_metadata 的 AICPU 调度 kernel；但应在实际日志中确认所用辅助路径没有额外的不可用 AICPU 依赖。若连这些 Runtime 能力也不具备，就必须继续采用 CPU golden 直接消费 provider 的路径；单个兼容接口不足以修复整个环境。
+
+建议先验证最小目标：在独立 worker 内关闭 golden，只跑 mock 预处理与原 qfa，确认 metadata 设备形状及实际 tiling；再开启 golden，检查两条入口命中同一 provider、分段计算确实成功，最终分别比较 Out 与 LSE。两个阶段都将原生 metadata 执行入口设置为触发即失败；单独注册但未被 golden 调用，或 golden 失败后回退，均不能记为成功。
+
+只有目标环境完成这些检查后，才能将候选方案升级为已验收实现。现有 55 项测试属于原三文件补丁方案，不自动覆盖共同接口方案；API mock 也不消除 helper 包装逻辑跨版本漂移的风险。
+
+## 25. 下一轮实施计划：统一入口、版本兼容与 CSV 参数来源（2026-10-31）
+
+本节将第 23—24 节的候选分析及后续讨论整理为下一轮实施顺序。它是待实施计划，不把共同接口、CSV 目标配置或跨版本兼容记为现有能力。当前可部署基线仍为 `eef4af5` 的三文件 assets 补丁；2026-10-30 的 55 项 CPU 测试证据仅属于该基线。本轮只更新文档，未新增代码验证或目标设备结论。
+
+### 25.1 已确定的边界与改动范围
+
+- 仅处理一次完整输入；保留现有 MXFP8、quant_mode=1、正向 Eager、D=Dv=128、Q/scale/Out=TND、KV=TND 或 PA_BNBD、默认窗口、显式正最大长度等限制。mask=0/3/5 的计划检查不等于全部组合已经完成真实 golden 或设备数值验收。
+- metadata 包含 Header、FA 分核区、FD 归并区及保留的第二行；调度依赖形状、有效/分配长度、算子属性、目标和算法版本，不读取 Q/K/V 的具体浮点数值。多 section、FD、PA 布局均不意味着多轮 KV cache。
+- C++ helper 不解析 CSV。TTK 解析 CSV 并生成实际输入，Python 适配层读取实际形参与长度张量，校验 sidecar 后编码给 helper。独立 generate 入口继续接受 JSON。
+- build 仍不调用 Git，必需头文件、assets/golden 和 AICPU 参考 cpp 均强制检查；缺任一项停止并列出全部缺失项，无跳过选项。源码身份由内容摘要确定，不把 Git 历史重新变成前置条件。
+- 下一轮只设计一个共同 Python metadata 实现入口与必要的 assets 保护。候选补丁可包含 Torch 扩展 Python 实现及必要 assets 文件，不改 Torch schema/签名、生产 C++/AI Core 或 TTK。扩大补丁范围是本节待落地的设计，不表示当前三文件补丁已经替换。
+- 现有 `assets_explicit` 与候选 `metadata_api` 是部署/测试方案标签。每个 checkout/worker 只启用其中一套；工具需识别、拒绝叠加，明确卸载旧补丁后再应用候选补丁。保留基线回退是显式部署选择，运行失败不自动切换方案、native 或全局 golden。
+
+### 25.2 helper 职责拆分与版本约束
+
+当前 helper 由三类代码构成，不能统称为完整复用原 AICPU 算子：
+
+| 类别 | 当前代码 | 下一轮处理 |
+|---|---|---|
+| 输入输出与安全检查 | wire 解析、范围/容量检查、文件与摘要输出 | 留在通用入口；main 仅编排，不加入 CSV、TTK 或 SDK 对象 |
+| 上游包装行为的适配 | BaseInfo/DeviceInfo、架构与核配比限制、FD/L2 策略、needInitOutput、FA/FD 字段组织 | 拆为集中且有来源说明的版本适配模块；核配比属于当前支持限制，不能宣称为全部版本的通用定律 |
+| 实际算法复用 | AdjustSinnerAndSouter*、SectionStreamK::Compute、FaMetaData 编码类 | 继续从目标源码编译；接口/语义变化需重新适配 |
+
+先做行为不变的模块拆分，不修改现有结果，也不把 L2、FD 阈值等算法细节转成 CSV 可调参数。长期共用纯计算接口可以消除重复策略，但需要原 AICPU 生产源码配合，单列为后续选项，不作为本轮前置条件。直接编译完整 AICPU cpp 还需要 CpuKernelContext/SDK 适配，不能仅增加 include 就认为已复用完整实现。
+
+版本兼容由三层分别约束：
+
+1. 编译依赖摘要：继续记录真正参与编译的 helper/头文件与二进制摘要；头文件变化要求重建。
+2. 行为依赖摘要：新增记录原 AICPU cpp、共同 Python 实现、decoder、相关 assets 和补丁/适配版本的内容身份。未参与编译的源码不得混称编译依赖；记录变更后的状态必须进入缓存、bundle 与 worker 身份判断。
+3. 适配兼容结论：为已核对源码组合登记适配版本、支持字段和 metadata 格式。源码变化但适配兼容性尚未确认时停止 mock，明确指出变更文件和待核对项。重新 build 只更新编译产物，不能自动把新的 ParamsInit、needInitOutput 或编码语义判为兼容。
+
+改动识别需区分原始源码与已应用补丁的运行态摘要，明确先检查/应用候选补丁、再登记运行态依赖的顺序；不得要求补丁后的文件匹配补丁前摘要。重复应用应幂等；同样内容的源码压缩包可使用，未知内容不因文件名相同而获得兼容结论。Python 模块首次加载时核对实际 `__file__` 和内容来源，防止只修改 checkout、实际却加载了另一份安装包。
+
+验证格式变化时需同时核对 C++ 编码、Python 中固定的偏移/保留字段/容量规则和 golden decoder。变更 decoder 后，不允许命中旧缓存绕过新检查。现有 `qfa-host-v1` 是 mock 自身标识，不能当作上游 qfa_metadata 版本。
+
+### 25.3 共同接口的最小落地路径
+
+目标生产入口为 `torch_extension/quant_flash_attn.py::quant_flash_attn_metadata` 的同一个 Python 实现函数：包导出函数直调、PrivateUse1 dispatcher 调用必须都进入此处；无 Tensor 参数时的 fallback 也应按相同模式拒绝不支持的请求，不得绕回真实 AICPU。首版不新增 CPU dispatcher、图模式或 Meta/Fake 实际计算能力。
+
+```text
+实际调用形参 → 用例支持范围检查
+                 ↓
+共同 metadata Python 实现：规范化 metadata 实参
+                 ↓
+与本次用例请求比对 → 已固定目标/构建身份的 provider
+                 ↓
+Host helper → Header/FA/FD/容量/decoder 校验
+                 ↓
+按原接口设备语义返回 contiguous int32 metadata
+```
+
+- mock 分支必须在原 `_calculate_max_schedule_size`、NPU 输出分配及 `op_builder.load()` 之前选择；按目标核数计算容量，不能先按物理设备默认核数分配。模块级导入/注册/`_ensure_initialized()` 是否仍需 SDK 能力也要核实，不能把函数内绕过 load 等同于整个模块可脱离 CANN 导入。
+- 不覆盖 `torch.ops` 属性、不替换已导入别名、不做全局函数 monkeypatch。包直调和 dispatcher 通过修改共同实现函数体收敛；只注册另一条 dispatcher kernel 不足以覆盖 golden。
+- metadata 接口实参与 QFA 主调用分别正规化后比对；保留调用侧完整范围校验。原 build_metadata_arguments 未完整传递窗口等信息，需显式补齐或在调用侧拒绝。非空 V-tail、sinks、非默认窗口等不能因关闭 golden 被漏检。 独立 metadata API 调用只校验其可见实参；完整 QFA e2e 必须提供本次用例上下文，不能假定 metadata 接口能获知未传入的 QKV/V-tail 信息。
+- 两个消费方的入口记录 hook、规范化 request、target、适配身份及 metadata 摘要。同一请求即使命中缓存，也记录消费事件；“调用过 provider”不能代替“golden 分段计算成功”。
+- npu_preprocess 继续处理 None→字典回填、(0,)→resize/copy、固定形状→严格匹配/copy。已有非零 Tensor 仍生成计划；不截断、不把 CPU Tensor 填入 NPU 动态槽。
+- metadata_api 模式的 golden 必须实际走共同接口，不能保留旧补丁的显式计划短路后宣称接口已覆盖它。保留原数值函数与 Out/LSE 整理；mock 下导入失败、_HAS_NPU=False、计划为空、decoder 或分段数值失败均报错，绕过原分段缓存或补足目标与版本身份，禁止全局参考回退。
+- 目标 Runtime 支持 NPU 分配、传输、同步、读回时，候选模式可先保留 golden 的这些操作；它们不等同于 AICPU metadata 调度，但仍要检查是否引入其他不可用 AICPU 辅助任务。若 Runtime 不具备这些能力，使用现有 CPU golden 直接消费 provider 的已验收方案，保持候选模式待验收，不隐式改变接口返回设备。
+- worker 首次调用前确定 native/mock 模式，首次调用固定目标、源码、已加载实现与 helper 身份。运行中配置或模式变化失败；fork 后独立初始化，重启才可更换目标。
+
+### 25.4 CSV 能提供什么，以及如何减少配置
+
+| 信息 | 首选来源 | 约束 |
+|---|---|---|
+| Nq/Nkv、D/Dv、分配形状 | TTK 生成的真实 Q/K/V shape | CSV 的 N_q/N_kv/D 等只作一致性检查，不读 testcase_name 猜参数 |
+| batch、cu_seqlens、seqused | 实际长度张量，必要时使用 CSV *_values | 两者同时存在必须一致；PA KV 不传 cu_seqlens_kv；保留分配长度与有效长度差异 |
+| quant/mask/window/layout/max_seqlen | CSV attributes 装配后的实际形参 | 与主 qfa 同源；max 继续显式为正，不单独推导并改写 metadata 侧默认值 |
+| SoC、编译架构、有效 AIC/AIV | 外部目标配置，或新增完整 CSV 目标块 | 配置声明需与实际 tiling 核对；普通设备总核数、short_soc_version/--sim-soc 不直接替代有效核数或构建架构 |
+| 分块、FD/L2 策略、编码格式 | 已适配的对应版本源码 | 不允许 CSV 自由覆盖算法策略 |
+| 源码根目录、helper 位置 | checkout/部署环境与构建清单 | 保留部署配置；CSV 不消除源码或 C++ 编译器依赖 |
+
+既有用例参数已经来自 TTK，无需另维护 request.json；它仅用于独立 CLI。CSV 目标块是后续可选能力，当前代码尚不识别。计划使用 attributes 中的 `qfa_mock_target`，复用现有 target 的完整字段（name、soc_version、kernel_arch、aic_core_num、aiv_core_num），不新增 TTK 顶层列或修改算子 schema。
+
+拟定的解析规则如下，落地前写入独立契约与示例，不提前改写当前部署说明：
+
+1. 新增可选显式模式开关 `QFA_METADATA_BACKEND=mock_aicpu`。未设置新开关时兼容现有非空 QFA_METADATA_CONFIG 启用 mock 的行为；两者都未设置仍走 native。显式 native 与非空 mock 配置/CSV 目标冲突时失败，不静默选一方。
+2. mock 已启用时，完整 CSV 目标可替代外部目标 JSON；同时给出两者必须按规范化目标逐字段一致，禁止不透明覆盖或拼接部分字段。缺目标、缺必需字段、未知字段均失败。
+3. CSV 目标本身不静默切换 backend。native 下存在 mock 目标也需由用例校验报告配置冲突；纯 CLI 不因 CSV 功能改变行为。cache 使用默认值或兼容配置，不将缓存参数重复到每个用例。
+4. CSV 中的额外属性需要在 golden 与预处理边界显式消费和传递，当前仅写入 CSV 不会生效。metadata 接口没有该参数，不能靠修改其 schema 或临时改环境变量透传；通过一个明确的 worker 目标绑定入口初始化同一 provider，并在后续两端重复核对。
+5. 首版一个 worker 只绑定一个目标；同一运行中不同用例声明不同目标时明确失败，按目标拆开启动 TTK。不引入同 worker 多目标 provider 池；同目标字段排版变化不算目标变化。
+6. 为完整用例请求建立调用范围内的显式上下文，并与 metadata 接口实际收到的参数核对；上下文在成功/失败后清理，不能泄漏至下一用例或线程。不从另一用例的模块全局状态补缺字段。具体传递方式在接入阶段定稿，不影响公开算子签名。
+
+CSV 可减少目标 JSON 文件，但不能自行证明物理/仿真平台、安装包与实际构建一致。核数比限制先集中到当前版本适配配置，保留拒绝未知目标的行为，不因 CSV 可填任意值而放开。
+
+### 25.5 分阶段任务、依赖和完成条件
+
+| 阶段 | 范围与交付 | 前置条件 | 完成条件 | 当前状态 |
+|---|---|---|---|---|
+| P0 | 同步第 22—24 节及本节；整理基线、待办、入口图和现有证据 | 无 | 设计/本地副本/进度相符，未把候选当作已实现 | 本轮文档同步完成；无新增运行证据 |
+| P1 | helper 行为不变拆分；编译/行为身份分离；兼容清单与源码来源检测 | P0 | 当前固定样本与六组 CPU 结果不变；仅改 AICPU cpp 或 decoder 也能拒绝失配；必需文件仍全检 | 待实现 |
+| P2 | 共同 Python metadata 接口候选补丁、独立 adapter 与部署模式检测 | P1 | 真包直调与真 dispatcher 均命中同一实现；原生 metadata 调度入口触发即失败；模式不叠加 | 待实现 |
+| P3 | golden 严格失败、真实参数一致性、缓存、槽位与生命周期回归 | P2 | 关闭 golden 仍检查完整用例；分段计算成功；所有错误不回退；候选独立得到 CPU 接入证据 | 待实现 |
+| P4 | CSV 目标块、显式开关与配置来源规则；新示例/使用说明 | P3 | 双入口同目标同计划；无需目标 JSON 的 CSV 用例通过；来源冲突、缺字段、worker 换目标均失败 | 待实现 |
+| P5 | 目标 Runtime 冒烟与实际 AI Core 精度；登记可部署组合 | P2/P3，CSV 场景另需 P4 | 先关闭 golden 验证 metadata 写入/实际 tiling，再开启 golden 验证两端及 Out/LSE；AICPU 同配置对拍具备条件时单列完成证据 | 待目标环境 |
+
+P2 前先识别模块导入与 Runtime 能力边界；发现环境不支持时停止候选设备路径，P1 及 CPU 侧验证仍可推进。P5 不等待 CSV 优化才能开始，但必须使用已确认一致的目标来源。P1 不要求维护任意历史版本，只登记已完成适配与验证的源码组合；未知版本明确失败。
+
+### 25.6 验收矩阵与上线条件
+
+- 保留现有 55 项基线回归，候选新增证据单独记录模式、补丁摘要、适配版本、源码/安装模块来源及环境；不把旧测试数量累加后称为目标验收。
+- 入口：包函数、PrivateUse1 dispatcher、fallback 路由；native 原行为；mock 配置失败；未启用/中途改模式；旧补丁叠加；错误 checkout/安装包来源。
+- 请求：相同 shape 不同有效长度、padding、零长、FD、多 section；原始累计长度与有效长度均参与身份；改变 QKV 数值而元信息不变时计划不变。不同核数使用独立 worker。
+- 版本：头文件修改触发重建；仅修改原 ParamsInit、初始化规则或 decoder 也触发行为失配；未知格式和适配版本失败；行为身份变化后不能复用缓存或旧 bundle。
+- golden：关闭时预处理仍拒绝非支持用例；开启时实际通过共同接口、decoder 与原分段数值函数；注入获取/解码/数值失败，不执行真实 AICPU 或全局参考。验证旧分段缓存不能绕过共同接口。
+- 槽位：None、(0,)、固定匹配、固定不匹配、已有非零内容；设备、dtype、连续性和容量与目标一致。CPU 复制替身只能证明槽位行为，真实 H2D 另验。
+- CSV：既有用例不依赖 request.json；目标来自文件/CSV 的等价性、冲突、缺省、未知字段及 worker 固定；验证黄金和预处理收到同样的属性来源。
+- 目标：记录真实 SoC/架构/有效核数、Runtime 版本、实际安装/构建身份和 tiling；实际 Out/LSE 比较才升级为设备通过。无法运行真实 AICPU时保留对拍未完成，不伪造与原算子一致性结论。
+
+完成 P2/P3 的独立入口和严格失败验证后，才评估是否替换推荐接入；正式提升候选需目标环境 P5 证据。未到此条件前，README 的推荐部署命令继续对应现有 assets_explicit 基线，候选仅在隔离 checkout/worker 验证。

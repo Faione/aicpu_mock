@@ -4,6 +4,8 @@
 
 **当前推荐：应用一个 assets 补丁，继续使用原 Spec 运行 TTK。** 不再要求外置 Spec、运行时函数替换、异常桥接或平台启动回执。设计决策见 [简化计划](docs/SIMPLIFICATION_PLAN.md)，当前状态见 [PROGRESS.md](PROGRESS.md)。
 
+下一轮设计见 [迭代计划](docs/ITERATION_PLAN.md)：统一 metadata Python 入口、补版本兼容检查和 CSV 目标配置。以上仍待实施，下面命令对应当前已交付方案。
+
 ## 在目标项目使用
 
 以下在目标项目既有的 Torch/CANN/TTK 仿真环境执行。mock 工具使用 Python 3.9+ 和 C++17 编译器；应用补丁需要 Git 可执行程序。目标项目需包含完整的必需源码，但不要求有 .git 或提交历史。

@@ -1,14 +1,14 @@
 # QFA 仿真环境的 Mock AICPU 设计与 Agent 交接
 
 更新日期：2026-10-31  
-状态：当前可部署实现仍为三文件 assets 补丁，55 项 CPU 基线测试通过；第 25 节已按最新要求改为 Torch C++ 扩展 metadata 分派与共享 Host 核心方案（仅设计、尚未实现）。第 23—24 节保留 Python 入口备选分析，真实设备验收未完成。  
+状态：已按第 26 节及 .run 设计第 10 节开发共享 Host 核心、PyBind 包装与交付工具；63 项 CPU 回归通过，真实 CPU libtorch 包装验证通过。第 27 节记录源码与证据；真实 CANN 扩展/.run 安装及设备验收未完成。  
 仓库：`/Users/fanghaolei/Workplace/agent/ops-transformer`  
 原型：`scratch/qfa-metadata-mock/`  
 当前实现：`/Users/fanghaolei/Workplace/agent/aicore_mock`（远端 `git@github.com:Faione/aicpu_mock.git`）
 
 当前实现与验收清单：[qfa_mock_aicpu_status.md](/Users/fanghaolei/Workplace/agent/ops-transformer/scratch/qfa_mock_aicpu_status.md)。第 17—20 节保留旧外置方案及迭代记录，不能作为当前主路径的部署要求。
 
-阅读顺序：第 1—16 节说明当前基线，第 17—21 节保留演进记录，第 22 节登记已有证据；下一轮实施按第 25 节执行，第 23—24 节作为其方案依据。旧记录中的零修改、跳过构建检查或启动器必选要求不覆盖当前约定。
+阅读顺序：第 1—16 节说明旧 assets_explicit 基线，第 17—25 节保留分析与演进；下一轮设计以第 26 节及 .run 详细文档第 10 节为准，实际开发进度和证据见第 27 节。旧精确容量、必须修改 assets 或跳过源码检查的记录不覆盖最新约定。
 
 ## 1. 目标与结论
 
@@ -853,6 +853,8 @@ mock 分支必须位于原 `_calculate_max_schedule_size`、NPU 输出分配和 
 
 ## 25. 下一轮实施计划：在 Torch C++ 扩展中 mock metadata（2026-10-31）
 
+后续调整见第 26 节：首期将本节的扩展方案随 `.run` 安装，TTK、assets 不改；assets 严格保护补丁不再是新模式部署前提，输出容量改为区分默认分配 shape 与实际所需容量。本节原约定与第 26 节冲突时，以第 26 节为准。
+
 本节按用户最新决策更新，取代上一版第 25 节“共同 Python 函数直接调用 provider”的实施路线；第 23—24 节保留为分析依据和 Python 入口备选，不再是下一轮首选接入点。当前已交付实现仍是 `eef4af5` 的三文件 assets 补丁，55 项 CPU 证据不变。本轮仅优化设计，未改运行代码、未编译新扩展、未新增设备结论。
 
 ### 25.1 决策、范围与真实接入点
@@ -983,3 +985,42 @@ P1 可在当前普通 CPU 环境推进；没有 Torch/CANN 时不得将 CPU brid
 - 设备：正确 stream/设备上的长度读取、H2D、同步和输出可消费；单列真实安装/工具链、SoC/有效核数/tiling、Out/LSE 及 AICPU 对拍状态。
 
 完成真实 P2/P3 接入验证后才评估升级；推荐部署改为 extension_cpp 还需 P5 目标证据。当前 README 仍对应已实现的 assets_explicit，Python API 方案仅作未实施备选，不与 C++ 方案叠加。C++ 接入减少了 Python 生产入口适配，但增加目标扩展编译依赖，也没有自动消除上游包装行为的版本漂移。
+
+## 26. `.run` 安装与原 assets 不改的后续计划（2026-10-31）
+
+详细交接文档：[qfa_mock_run_package_design.md](/Users/fanghaolei/Workplace/agent/ops-transformer/scratch/qfa_mock_run_package_design.md)。本节与详细文档更新下一轮设计，不改变当前已实现基线。
+
+结论：可将同名 metadata 接口的 Host mock 与真实 qfa 一并通过 `.run` 配送，安装后通过环境变量选择路径。只安装一个不同名字的 `MockQfaMetadata` 不会改变现有调用，必须保留原接口并加入 native/mock 分派。
+
+首期继续采用 extension_cpp，`.run` 包含更新后的 Torch 适配 wheel、C++ bridge 源码、共享 Host 核心、qfa 及其依赖、环境脚本和构建清单。TTK、assets、公开 schema 和业务调用不改；安装的底层 Torch 适配包会更新。内置包已有 wheel 收集/安装基础，custom vendor 的对应配送、安装和激活仍需补齐；缺依赖、缺 wheel 或安装失败不能按当前部分脚本的宽松方式报告成功。当前 wheel 首次调用会 JIT，不能把它当成已包含预编译扩展的二进制包。
+
+补丁粒度进一步按详细计划第 10 节优化：原 C++ native metadata 函数体保持不变，在 PyBind 注册处以新包装器持有原函数指针，运行时选择 native/mock；Python 保留一个分配前配置/容量接入点，其余逻辑放在新增文件。强弱符号仅作为新 backend hook 的可选受控链接方式，不直接覆盖原强符号。具体接入不再要求向原 native 函数体插入 mock 逻辑。
+
+对第 25 节作以下调整：
+
+- 新模式不再要求 assets 保护补丁；配置、可见参数校验、版本身份和设备容量检查进入安装包。原 golden 的异常回退仍存在，独立验收须证明分段数值实际成功；不能承诺原 golden 任意错误都向上传播。
+- 区分目标核数和分配容量。默认 Python 按目标分配；核心/bridge 接受显式行容量，验证实际 `16 + sectionNum*(AIC+AIV)*16 <= rowSize`，不拒绝所有更大 output，不伪造核数或截断计划。
+- 原 CSV 动态 metadata 和 `(0,)` 槽位可沿用原回填流程；固定槽 shape 与新分配不一致会被原 assets 拒绝。“CSV 不改”需登记这一适用条件。
+- 不依赖开发仓库的绝对路径；wheel 纳入新增核心/头文件及行为依赖身份。vendor wheel 命名、entry point 来源、多 provider 冲突与 JIT 缓存都需检查。
+- 部署仅启用一个生产入口，旧 assets_explicit 补丁不得与新 `.run` 模式叠加。
+
+实施按详细文档 R0—R5：安装/Runtime 探测 → 共享核心 → 同名 C++ 分派 → 完整 `.run` → 原 assets 回归 → 仿真 Out/LSE。若要求 Torch 适配包本身也完全不变，先做 C0：验证原 ACLNN 两阶段接口可通过 SDK 支持的 Host 执行机制完成长度读取、计算、写入和生命周期管理，再接入独立 CANN mock。当前仓库只确认 metadata 的 AICPU launcher，尚不能把 CANN Host-only executor 视为已验证能力。
+
+下一轮状态和验收以本节及详细计划为准；原 P1 的共享核心工作可以复用，原 P2/P3 部署方式由 R2—R4 细化，CSV 目标嵌入继续后置，不作为 `.run` 首期前置。本轮只更新 ops-transformer 下的设计和状态，未回写独立 mock 仓库的迭代计划副本。
+
+## 27. 第 26 节开发记录（2026-10-31）
+
+已同步 `.run` 详细设计第 10 节并完成可在本机开发验证的代码。状态以本节及独立仓库 PROGRESS.md 为准；第 25—26 节与详细文档中的“待实现”是设计阶段记录，不再代表以下源码尚未开发。
+
+- R1：抽出 metadata_core/metadata_adapter，helper 仅负责 wire/文件输出，扩展共同编译同一核心。接受显式 rowSize，只要求实际计划可容纳；纯 C++ 校验 Header、FA/FD、初始化、覆盖、工作区与保留区。
+- R2 源码：类型化 MakeMetadataBinding 捕获原 native 指针，仅修改 metadata 的 PyBind 绑定并注册私有控制接口。原 native metadata 和主 qfa 的 C++ 函数体/主绑定不改。Python 新模块准备配置/目标容量、固定身份并检查主用例范围，OpBuilder 显式加入共享源码。原 assets、TTK 与 schema 不改。
+- R3 工具：作用域限定的可检查/撤销接入、真实 vendor wheel 内容核对、单 .run 组合与严格安装器。wheel 内置核心/上游头文件、运行时、原基础发现框架、许可证与行为清单，不引用开发机绝对路径。组合器需要真正的同 vendor CANN custom 包、同源行为声明和完整安装文件摘要，不在 macOS 伪造 CANN 包。
+- 安装器核验 Linux 架构/依赖、原生安装文件、entry point/provider 来源并预热真正 JIT 扩展后才成功；失败保留 INSTALL_INCOMPLETE，不覆盖已有 prefix。安装包中的实际 qfa/metadata 及依赖清单由原生构建方提供，声明与摘要检查不替代真实算子执行。
+- 原 golden fallback 按第 26 节保留。新增独立 GoldenAudit（并随 wheel 配送）对原 decoder 的 metadata 身份和原分段计算成功作执行审计；真实原 golden 数值异常回退可被识别，未用异常类型替换来改变生产语义。
+- build 仍不调用 Git，必需源文件不允许跳过。新清单 build_format=3 区分编译与 behavior_files/behavior_digest，缓存/worker/bundle 均绑定身份。未知原 AICPU/decoder/分块源码变更需要适配复核，重新 build 不自动证明兼容。
+
+本轮完整 CPU 回归 **63 项通过，0 失败/错误/跳过，260 个上游 Python 文件摘要不变**；原补丁与旧外置路径六组 Out/LSE 摘要仍一致。真实 CPU libtorch 编译了新包装器与核心，验证 PyBind、CPU dispatcher、native 指针和异常传播、模式冻结、同一 output、显式较大容量，以及基线/FD/多 section 与 helper 逐字节一致。CPU acceptance 带明确标志，生产包会拒绝将其当成真实 CANN 扩展。
+
+这些证据不升级为 R2/R3/R4/R5 的目标完成：本机是 Darwin/arm64，无 torch_npu/CANN；尚未构建真实 CANN .run、安装并运行 PrivateUse1、验证 H2D/stream、实际 tiling、AI Core Out/LSE 或同配置 AICPU 对拍。接入与 wheel 测试使用临时源码副本，归档测试使用明确 trap fixture；没有给本地上游生产源码打补丁或安装替换算子包。
+
+操作入口：[EXTENSION_USAGE.md](/Users/fanghaolei/Workplace/agent/aicore_mock/EXTENSION_USAGE.md)。证据：[verification_latest.json](/Users/fanghaolei/Workplace/agent/aicore_mock/docs/verification_latest.json)、[cpp_bridge_verification.json](/Users/fanghaolei/Workplace/agent/aicore_mock/docs/cpp_bridge_verification.json)、[target_probe.json](/Users/fanghaolei/Workplace/agent/aicore_mock/docs/target_probe.json)。后续在目标环境按 R0 探测 → 真实 R2 扩展 → R3 原生包与安装 → R4 原 assets → R5 仿真推进。CSV 目标嵌入、弱 hook/稳定插件和 C0 仍保持后置。

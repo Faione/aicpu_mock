@@ -43,7 +43,7 @@ def main():
     equivalent = (len(PATCHED_RECORDS["numerical"]) == len(ACCEPTANCE_RECORDS["numerical"]) == 6 and
                   all((a["out_sha256"], a["lse_sha256"]) == (b["out_sha256"], b["lse_sha256"])
                       for a, b in zip(PATCHED_RECORDS["numerical"], ACCEPTANCE_RECORDS["numerical"])))
-    report = {"date": "2026-10-30", "scope": "mandatory source checks and build without Git, explicit assets patch (primary), legacy compatibility, real CPU hooks/golden and TTK SpecLoader",
+    report = {"date": "2026-10-31", "scope": "shared Host core and capacity validation, scoped extension integration, actual vendor wheel and bundle integrity, original assets CPU golden/fallback audit, legacy compatibility and TTK SpecLoader",
               "python": sys.version.split()[0], "torch": torch.__version__, "numpy": numpy.__version__,
               "tests_run": result.testsRun, "failures": len(result.failures), "errors": len(result.errors),
               "skipped": len(result.skipped), "passed": result.wasSuccessful() and not result.skipped and equivalent,

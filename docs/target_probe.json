@@ -1,0 +1,15 @@
+{
+  "host": "Darwin",
+  "machine": "arm64",
+  "python": "3.12.16",
+  "compiler": "/usr/bin/c++",
+  "torch_npu_available": false,
+  "cann_home": null,
+  "real_h2d": "not_run",
+  "actual_tiling": "not_run",
+  "aicore_out_lse": "not_run",
+  "source_compatible": true,
+  "torch": "2.9.0",
+  "extension_environment_present": false,
+  "note": "Presence checks only. Runtime copies, CANN compilation and actual kernel tiling require target acceptance."
+}

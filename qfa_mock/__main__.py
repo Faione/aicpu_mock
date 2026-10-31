@@ -58,9 +58,13 @@ def main():
             data = (bundle / "metadata.bin").read_bytes()
             if summary.get("source_digest") != source_digest(args.repo, summary.get("dependency_files")):
                 fail("SOURCE_CHANGED", "bundle was generated from a different source snapshot")
+            from .extension import compatibility
+            behavior = hashlib.sha256(canonical(compatibility(args.repo)).encode()).hexdigest()
+            if summary.get("behavior_digest") != behavior:
+                fail("SOURCE_CHANGED", "bundle behavior identity differs; regenerate it")
             if summary.get("metadata_digest") != hashlib.sha256(data).hexdigest():
                 fail("DIGEST_MISMATCH", "metadata bytes differ from bundle digest")
-            if summary.get("request_digest") != plan_digest(config, request, summary["source_digest"]):
+            if summary.get("request_digest") != plan_digest(config, request, summary["source_digest"], summary.get("behavior_digest")):
                 fail("DIGEST_MISMATCH", "request/config differs from bundle digest")
             result = validate_metadata(data, summary, config, request, args.repo)
         print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -69,7 +69,7 @@ class MetadataProvider:
         with self._lock:
             # Cache hits must also reject a stale/replaced helper or changed source.
             manifest = verify_build(self.helper, self.repo)
-            key = plan_digest(config, r, manifest["source_digest"])
+            key = plan_digest(config, r, manifest["source_digest"], manifest["behavior_digest"])
             if config["cache"]["enabled"] and key in self._cache:
                 self._cache.move_to_end(key)
                 result = replace(self._cache[key], cache_hit=True)
@@ -92,7 +92,7 @@ class MetadataProvider:
             checks = validate_metadata(data, summary, config, r, self.repo)
             summary.update({"request_digest": key, "metadata_digest": hashlib.sha256(data).hexdigest(),
                             "dependency_files": manifest.get("dependency_files"),
-                            "source_digest": manifest["source_digest"], "target": config["target"],
+                            "source_digest": manifest["source_digest"], "behavior_digest": manifest["behavior_digest"], "target": config["target"],
                             "validation": checks})
             result = MetadataResult(data, canonical(summary), canonical(r), self._config_json)
             if config["cache"]["enabled"]:

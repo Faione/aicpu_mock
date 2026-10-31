@@ -23,9 +23,11 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
-def plan_digest(config, request, source):
+def plan_digest(config, request, source, behavior=None):
     identity = {"target": config["target"], "request": request,
                 "algorithm_version": ALGORITHM_VERSION, "source_digest": source}
+    if behavior is not None:
+        identity["behavior_digest"] = behavior
     return hashlib.sha256(canonical(identity).encode()).hexdigest()
 
 

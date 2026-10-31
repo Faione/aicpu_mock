@@ -58,6 +58,34 @@ class RealPythonTests(unittest.TestCase):
     def setUp(self):
         self.provider = MetadataProvider(load_json(ROOT / "examples/target_arch92.json"), REPO, ROOT / "build/metadata_helper")
 
+    def test_unmodified_golden_fallback_is_detected_by_independent_audit(self):
+        from qfa_mock.attestation import GoldenAudit
+        torch = self.torch
+        args, kwargs = pa_inputs(torch, self.inputs, [1], [1], [1], 2, 1, 64)
+        module = self.golden.mxfp8_golden_mod
+        module._QFA_SECTION_CACHE.clear()
+        with GoldenAudit(module) as missing:
+            output = self.golden.cpu_qfa_mxfp8(*args, **kwargs)
+        self.assertTrue(torch.isfinite(output[0]).all())
+        with self.assertRaisesRegex(ValueError, 'did not successfully consume'):
+            missing.require_consumed()
+        # Seed the ORIGINAL cache with a valid current plan, then fail only numerical execution.
+        request, _ = request_from_call(self.golden.cpu_qfa_mxfp8, args, kwargs, golden=True)
+        result = self.provider.generate(request)
+        words = result.cpu_tensor().reshape(-1).tolist()
+        plan = module._decode_qfa_sections(words, [1], [1])
+        for key in module._QFA_SECTION_CACHE:
+            module._QFA_SECTION_CACHE[key] = plan
+        def numerical_failure(*args, **kwargs):
+            raise RuntimeError('injected sectioned numerical failure')
+        with patch.object(module, '_cpu_mxfp8_golden_sectioned', numerical_failure):
+            with GoldenAudit(module) as failed:
+                output = self.golden.cpu_qfa_mxfp8(*args, **kwargs)
+        self.assertTrue(torch.isfinite(output[0]).all())  # The unchanged upstream really fell back.
+        with self.assertRaisesRegex(ValueError, 'did not successfully consume'):
+            failed.require_consumed()
+        module._QFA_SECTION_CACHE.clear()
+
     def test_original_preprocess_slot_matrix_with_cpu_tensors(self):
         torch = self.torch
         args, kwargs = pa_inputs(torch, self.inputs, [16], [16], [64])

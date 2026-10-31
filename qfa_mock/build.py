@@ -12,6 +12,7 @@ from .model import ALGORITHM_VERSION, PROTOCOL_VERSION, MockError, canonical, fa
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER_SOURCE = ROOT / "cpp/metadata_helper.cpp"
+CORE_SOURCE = ROOT / "cpp/metadata_core.cpp"
 
 # These checks describe readiness, not Git identity or compiler fingerprints.
 COMPILE_SOURCES = (
@@ -62,6 +63,8 @@ def source_digest(repo, dependencies=None):
     for name in sorted(dependencies):
         if name == "@helper":
             path = HELPER_SOURCE
+        elif name.startswith("@mock/") and ".." not in Path(name).parts:
+            path = ROOT / name[len("@mock/"):]
         else:
             relative = Path(name)
             if relative.is_absolute() or ".." in relative.parts:
@@ -84,22 +87,34 @@ def build_helper(repo, output, compiler="c++"):
     # Compile to a private path so failed builds cannot damage a working executable.
     with tempfile.TemporaryDirectory(prefix="qfa-build-", dir=output.parent) as directory:
         compiled = Path(directory) / "metadata_helper"
-        depfile = Path(directory) / "metadata_helper.d"
-        command = [compiler, "-O2", "-std=c++17", "-I", str(repo), "-MMD", "-MF", str(depfile),
-                   "-MT", "qfa_metadata_helper", str(HELPER_SOURCE), "-o", str(compiled)]
+        objects, entries = [], []
+        for source in (HELPER_SOURCE, CORE_SOURCE):
+            obj = Path(directory) / (source.stem + ".o")
+            depfile = Path(directory) / (source.stem + ".d")
+            command = [compiler, "-O2", "-std=c++17", "-I", str(repo), "-I", str(ROOT / "cpp"),
+                       "-MMD", "-MF", str(depfile), "-c", str(source), "-o", str(obj)]
+            try:
+                result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+            except subprocess.TimeoutExpired:
+                fail("BUILD_FAILED", "compiler exceeded 120 seconds")
+            if result.returncode:
+                fail("BUILD_FAILED", result.stderr.strip())
+            entries += shlex.split(depfile.read_text().partition(":")[2].replace("\\\n", " "))
+            objects.append(str(obj))
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+            result = subprocess.run([compiler, *objects, "-o", str(compiled)], capture_output=True, text=True, timeout=120)
         except subprocess.TimeoutExpired:
-            fail("BUILD_FAILED", "compiler exceeded 120 seconds")
+            fail("BUILD_FAILED", "linker exceeded 120 seconds")
         if result.returncode:
             fail("BUILD_FAILED", result.stderr.strip())
-        # Only actual compiler inputs enter the fingerprint; readiness files do not.
-        entries = shlex.split(depfile.read_text().partition(":")[2].replace("\\\n", " "))
-        dependencies = []
+        # Keep compile dependencies separate from semantic compatibility evidence.
+        dependencies = ["@helper", "@mock/cpp/metadata_core.cpp"]
         for entry in entries:
             path = Path(os.path.abspath(entry))
             if path.resolve() == HELPER_SOURCE.resolve():
                 dependencies.append("@helper")
+            elif path.is_relative_to(ROOT / "cpp"):
+                dependencies.append("@mock/" + path.relative_to(ROOT).as_posix())
             else:
                 try:
                     dependencies.append(path.relative_to(repo).as_posix())
@@ -108,14 +123,16 @@ def build_helper(repo, output, compiler="c++"):
                     # Toolchain-managed files are not project source dependencies.
                     continue
         dependencies = sorted(set(dependencies))
-        manifest = {"build_format": 2, "protocol_version": PROTOCOL_VERSION, "algorithm_version": ALGORITHM_VERSION,
+        from .extension import compatibility
+        behavior = compatibility(repo)
+        manifest = {"build_format": 3, "behavior_files": behavior["files"], "adapter_version": behavior["adapter_version"], "behavior_digest": hashlib.sha256(canonical(behavior).encode()).hexdigest(), "protocol_version": PROTOCOL_VERSION, "algorithm_version": ALGORITHM_VERSION,
                     "repo": str(repo), "dependency_files": dependencies,
                     "source_digest": source_digest(repo, dependencies), "binary_digest": binary_digest(compiled),
                     "compiler": compiler}
-        os.replace(compiled, output)
         manifest_path = Path(str(output) + ".json")
         staged = Path(directory) / "manifest.json"
         staged.write_text(canonical(manifest) + "\n", encoding="utf-8")
+        os.replace(compiled, output)
         os.replace(staged, manifest_path)
     return manifest
 
@@ -126,8 +143,12 @@ def verify_build(helper, repo):
         fail("HELPER_NOT_BUILT", "run python3 -m qfa_mock build before generating metadata")
     manifest = load_json(str(helper) + ".json")
     expected = {"protocol_version": PROTOCOL_VERSION, "algorithm_version": ALGORITHM_VERSION,
-                "build_format": 2,
+                "build_format": 3,
                 "source_digest": source_digest(repo, manifest.get("dependency_files", [])), "binary_digest": binary_digest(helper)}
+    from .extension import compatibility
+    behavior = compatibility(repo)
+    expected.update(behavior_files=behavior["files"], adapter_version=behavior["adapter_version"],
+                    behavior_digest=hashlib.sha256(canonical(behavior).encode()).hexdigest())
     for field, value in expected.items():
         if manifest.get(field) != value:
             fail("STALE_BUILD", f"helper {field} differs; rebuild explicitly")

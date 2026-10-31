@@ -1,6 +1,6 @@
 # 简化接入计划（2026-10-30）
 
-本文件记录已交付的三文件补丁方案。2026-10-31 起的下一轮工作见 [ITERATION_PLAN.md](ITERATION_PLAN.md) 和主设计第 25 节；最新首选是在真实 Torch C++ 扩展内 mock metadata，共享 Host 核心、容量适配、行为版本检测与 CSV 目标配置均待实现，现有部署仍按 README 执行。
+本文件记录旧三文件 assets_explicit 方案。最新实施按主设计第 26 节、`.run` 详细设计第 10 节及 [ITERATION_PLAN.md](ITERATION_PLAN.md) 执行；共享核心、C++ 绑定包装与交付工具已开发，本机证据及目标环境待办见 PROGRESS.md。旧补丁仍保留兼容，不能与新方案叠加。
 
 本轮按用户授权，将“原 assets 零修改”改为“允许维护一个 assets 补丁文件”。以下为新的主方案，覆盖旧方案中外置 Spec 和平台启动器为必选项的约定。
 

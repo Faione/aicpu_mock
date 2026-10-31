@@ -5,6 +5,13 @@ test_cli_does_not_allow_skipping_required_sources (test_build.BuildTests.test_cl
 test_cli_missing_report_is_structured_and_complete (test_build.BuildTests.test_cli_missing_report_is_structured_and_complete) ... ok
 test_complete_sources_build_without_git (test_build.BuildTests.test_complete_sources_build_without_git) ... ok
 test_primary_adapter_does_not_import_legacy_patch_or_loader_modules (test_build.BuildTests.test_primary_adapter_does_not_import_legacy_patch_or_loader_modules) ... ok
+test_cpp_validator_rejects_corrupt_header_fa_and_padding (test_core.CoreTests.test_cpp_validator_rejects_corrupt_header_fa_and_padding) ... ok
+test_explicit_capacity_uses_real_schedule_not_allocation_upper_bound (test_core.CoreTests.test_explicit_capacity_uses_real_schedule_not_allocation_upper_bound) ... ok
+test_mutual_exclusion_and_source_edits_not_lost (test_extension.ExtensionTests.test_mutual_exclusion_and_source_edits_not_lost) ... ok
+test_real_vendor_wheel_and_run_bundle_integrity (test_extension.ExtensionTests.test_real_vendor_wheel_and_run_bundle_integrity) ... ok
+test_runtime_fixed_target_and_payload_integrity (test_extension.ExtensionTests.test_runtime_fixed_target_and_payload_integrity) ... ok
+test_scoped_binding_and_byte_exact_reversal_assets_unchanged (test_extension.ExtensionTests.test_scoped_binding_and_byte_exact_reversal_assets_unchanged) ... ok
+test_unknown_metadata_behavior_and_signature_rejected (test_extension.ExtensionTests.test_unknown_metadata_behavior_and_signature_rejected) ... ok
 test_cached_impl_from_other_checkout_is_not_overwritten (test_lifecycle.LifecycleTests.test_cached_impl_from_other_checkout_is_not_overwritten) ... ok
 test_golden_requires_successful_section_and_restores_all_failure_paths (test_lifecycle.LifecycleTests.test_golden_requires_successful_section_and_restores_all_failure_paths) ... ok
 test_module_source_change_and_missing_signature_fail (test_lifecycle.LifecycleTests.test_module_source_change_and_missing_signature_fail) ... ok
@@ -53,8 +60,9 @@ test_original_preprocess_slot_matrix_with_cpu_tensors (test_real_python.RealPyth
 test_real_function_faults_restore_and_never_submit_metadata (test_real_python.RealPythonTests.test_real_function_faults_restore_and_never_submit_metadata) ... ok
 test_real_golden_baseline_varlen_padding_zero_and_no_stale_context (test_real_python.RealPythonTests.test_real_golden_baseline_varlen_padding_zero_and_no_stale_context) ... ok
 test_real_golden_fd_and_multisection (test_real_python.RealPythonTests.test_real_golden_fd_and_multisection) ... ok
+test_unmodified_golden_fallback_is_detected_by_independent_audit (test_real_python.RealPythonTests.test_unmodified_golden_fallback_is_detected_by_independent_audit) ... ok
 
 ----------------------------------------------------------------------
-Ran 55 tests in 6.748s
+Ran 63 tests in 9.617s
 
 OK

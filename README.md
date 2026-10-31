@@ -4,7 +4,7 @@
 
 **当前推荐：应用一个 assets 补丁，继续使用原 Spec 运行 TTK。** 不再要求外置 Spec、运行时函数替换、异常桥接或平台启动回执。设计决策见 [简化计划](docs/SIMPLIFICATION_PLAN.md)，当前状态见 [PROGRESS.md](PROGRESS.md)。
 
-下一轮设计见 [迭代计划](docs/ITERATION_PLAN.md)：在 Torch 加载的真实 C++ 扩展中分派 metadata 的 native/mock，helper 与扩展共享 Host 核心，并补容量适配、版本检查与 CSV 目标配置。以上仍待实施，下面命令对应当前已交付方案。
+新版 extension_cpp 已提供共享 Host 核心、PyBind 绑定包装、容量适配、vendor wheel 和单个 .run 组合工具，原 assets 不改。使用见 [EXTENSION_USAGE.md](EXTENSION_USAGE.md)，进度见 [迭代计划](docs/ITERATION_PLAN.md)。目前通过 CPU 核心/libtorch 与打包回归，真实 CANN 编译、安装和设备精度待目标环境验收；下面保留现有 assets 补丁方案命令，两种接入不可叠加。
 
 ## 在目标项目使用
 
@@ -110,7 +110,7 @@ python3 scripts/apply_assets_patch.py --repo "$QFA_REPO" --reverse
 
 这些文件均为 build 的强制前置条件，缺少任一项都停止构建，不提供跳过选项。其他实际引用但未列入预检查的缺失头文件，由编译器给出具体错误。编译成功后根据 -MMD 记录实际头文件和 helper 摘要；assets/golden、AICPU cpp 不进入编译指纹。
 
-主要依赖是 load_balance 头文件、qfa_adjust_sinner_souter.h、quant_flash_attn_metadata.h。产物为 build/metadata_helper 和 .json 构建清单。升级后重新编译一次；新的 build_format=2 清单只包含编译依赖，旧 metadata bundle/平台摘要需要重新生成。
+主要依赖是 load_balance 头文件、qfa_adjust_sinner_souter.h、quant_flash_attn_metadata.h。helper 与扩展共享 metadata_core/metadata_adapter，helper 只保留输入输出。产物为 build/metadata_helper 和 .json 构建清单。新 build_format=3 区分编译依赖和 behavior_files/behavior_digest；已知上游摘要登记在 compatibility/qfa_host_v2.json，未知行为变化需先适配而不能仅重编译。升级后重新 build，旧 bundle/平台摘要需重新生成。
 
 ## 独立获取 metadata
 

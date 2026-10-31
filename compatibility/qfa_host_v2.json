@@ -1,0 +1,14 @@
+{
+  "adapter_version": "qfa-host-v2",
+  "files": {
+    "attention/common/op_kernel/load_balance/base_info.h": "cfb8b46a7e63d3139326d2b07d34b1cd0185d883f00e42f1ba7a954972721cdd",
+    "attention/common/op_kernel/load_balance/load_balance_common.h": "f92f14469407fb0434bde6de07d65f632892a233b134654397157951deebb383",
+    "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k.h": "2352ea26150c09449e51378463f5aeb580506187ac69787934c31413cec5054f",
+    "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k_def.h": "5dde06c893f12eef0ade9285dd07ed942d2c436830f3856784b6c5dac5a9ab79",
+    "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k_impl.h": "bedf2cc4e709200c4572f0e3a7e280fd0057d3bfb23e802a9436444e8f518d1a",
+    "attention/quant_flash_attn/op_host/qfa_adjust_sinner_souter.h": "4610cb612f931f01ca9a10840fbd842ddc26d726644127741308733c24e887ef",
+    "attention/quant_flash_attn_metadata/op_kernel_aicpu/quant_flash_attn_metadata.h": "7d4cccc54e2a455263fd712c6135110a2743fd0bce222a7f6ecde783876b4372",
+    "attention/quant_flash_attn_metadata/op_kernel_aicpu/quant_flash_attn_metadata_aicpu.cpp": "5cc26714205ab2c424759282ad0749070439761cc50a536ae33c901e6faacd17",
+    "attention/quant_flash_attn/tests/assets/quant_flash_attn_golden.py": "4426360cff883c364f899032d9ebe925b3e4a2c3665027436cdd59df0d1d58ee"
+  }
+}

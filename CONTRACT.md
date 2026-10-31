@@ -23,7 +23,7 @@ CLI generate 与旧外置插件是专用 mock 入口，缺配置即报错。当�
 
 build 不调用 Git。编译前必须按清单检查编译头文件、assets/golden 和 AICPU 参考 cpp；缺少任一项都阻止构建，不提供跳过选项。缺失时返回 SOURCE_MISSING，error.repo 是解析后的根目录，error.missing 数组逐项包含 group、relative_path、path、required_for；message 同时列出全部缺失项。分组为 compile、assets、aicpu_reference。检查失败不调用编译器、不覆盖旧产物。
 
-C++ 编译完成后生成 build_format=2 清单，dependency_files 仅记录实际引用的项目头文件及 @helper。source_digest 按这些依赖的相对路径和内容计算，不包含 assets、decoder 或未参与编译的 AICPU cpp；运行时据此检查依赖变化。文件完整性检查不等于行为/版本兼容性验收。
+C++ 编译完成后生成 build_format=3 清单。dependency_files 记录实际编译的项目文件、@helper 和 @mock/cpp/ 下的共享核心；source_digest 只按这些编译依赖计算。behavior_files/behavior_digest 另行记录已核对的上游 AICPU、分块/调度定义及 decoder；adapter_version=qfa-host-v2 标识适配实现，algorithm_version=qfa-host-v1 保留原分核算法身份。编译和行为身份均进入 worker 校验；行为摘要另进入请求/缓存/bundle 身份。未知行为变更报 UPSTREAM_INCOMPATIBLE，重编译不自动授予兼容结论。旧清单和 bundle 需重新生成。
 
 ## 请求
 
@@ -79,7 +79,8 @@ Header 槽位：0=sectionNum，1=isFD，2=M，3=S2，4=AIC，5=AIV，15=needInit
 - `protocol_version=1`、`algorithm_version=qfa-host-v1`。
 - `shape`、`header`、`used_words`、`active_aic`、`active_aiv`、`target`。
 - `source_digest` / `dependency_files`：实际编译依赖及 Host C++ 适配代码的 SHA-256 指纹/清单，不代表已验证生产包装逻辑或实际 tiling。
-- `request_digest`：目标、规范化请求、算法版本及源码指纹的规范 JSON 的 SHA-256。
+- `behavior_digest`：已核对源码组合和适配版本的摘要，独立于编译依赖。
+- `request_digest`：目标、规范化请求、算法版本、编译指纹及行为摘要的规范 JSON 的 SHA-256。
 - `metadata_digest`：完整二进制 SHA-256。
 - `validation`：结构/原 decoder 覆盖校验状态、FD 任务数、有效 Q/KV 长度。
 - `cache_hit`：本次是否命中当前 worker 的进程内缓存。
@@ -112,3 +113,13 @@ used_kv_count used_kv_values...
 ```
 
 缺失数组写 `-1`；布尔 flag 写 0/1；不接受尾随数据。固定受支持属性由协议版本约束，不在 wire 中重复传递。C++ 再检查范围、长度和容量。启动形式为 `metadata_helper <output.bin>`，成功 stdout 输出 JSON 摘要，失败非零退出并在 stderr 输出错误。每次调用使用独立临时目录。
+
+## extension_cpp 安装模式
+
+原 Torch schema、C++ native metadata 函数体和主 qfa 绑定不变。对外 metadata PyBind callable 由 MakeMetadataBinding 持有原函数指针：native 调原指针，mock 调同一 Host 核心；不做强弱符号抢占或 Python provider 回调。Python 仅处理配置、目标容量和完整主 qfa 用例范围；原 assets 不改，因此原 golden 的回退行为保留，独立审计负责识别分段是否实际成功。
+
+默认 output 按目标上界分配，C++ 也接受显式其他行容量，只要实际 `16 + sectionNum*(AIC+AIV)*16 <= rowSize`。检查 dtype=int32、二维两行、连续、设备和容量，完整校验后写入并返回原 output，第二行和剩余区域清零。核心覆盖验证设 20,000,000 次任务遍历上限，超过显式失败；单个 metadata 仍限制为 256 MiB。
+
+扩展目前不缓存计划。显式 QFA_METADATA_BACKEND=mock_aicpu 或兼容的非空 QFA_METADATA_CONFIG 启用 mock；显式 native 与非空 mock 配置冲突失败。worker 固定规范化目标/配置，C++ 固定 PID/模式/目标/构建身份；fork 后重新初始化，修改后重启。目标 JSON 格式沿用前文，CSV 目标配置仍未实现。
+
+独立 vendor wheel 内置共享核心、相关上游头文件、参考身份和 Python 适配；不依赖开发仓库绝对路径。`.run` 组合工具要求实际 CANN custom 包、同 vendor wheel、同源行为身份和完整安装文件清单。安装过程核对原生文件、provider 来源和真实 JIT 扩展后才报告成功，失败保留 INSTALL_INCOMPLETE。编译依赖和目标环境步骤见 EXTENSION_USAGE.md。

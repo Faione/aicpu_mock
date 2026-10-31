@@ -17,6 +17,8 @@ def main():
     parser.add_argument("--check", action="store_true", help="check applicability without editing")
     parser.add_argument("--reverse", action="store_true", help="remove the patch")
     args = parser.parse_args()
+    if not args.reverse and (Path(args.repo) / ".qfa_mock_extension_state.json").exists():
+        parser.error("extension_cpp is installed; remove it before applying assets_explicit")
     # Match each target file's line endings, including on reverse application.
     # Git's whitespace-tolerant matching alone would restore changed CRLF lines as LF.
     lines = []

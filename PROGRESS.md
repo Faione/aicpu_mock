@@ -1,53 +1,36 @@
 # QFA Mock AICPU 进度（2026-10-31）
 
-当前可部署基线为 eef4af5 的“一个 assets 补丁 + 共享 provider + Host helper”，旧零源码修改方案保留兼容。下一轮按主设计第 25 节及 [ITERATION_PLAN.md](docs/ITERATION_PLAN.md) 实施，首选 extension_cpp，在 Torch 加载的真实 C++ 扩展中 mock metadata；第 23—24 节保留为 Python 入口备选，均未替换当前实现。
+已同步主设计第 26 节及 [`.run` 详细设计](docs/qfa_mock_run_package_design.md)，按第 10 节实现“独立文件 + PyBind 绑定包装 + 分配前准备”。旧第 25 节的精确行容量与必须修改 assets 的要求由第 26 节覆盖。当前用户流程见 [EXTENSION_USAGE.md](EXTENSION_USAGE.md)，旧 assets_explicit 命令仍保留于 README；两种接入互斥。
 
-## 本轮计划更新（2026-10-31）
+## 本轮完成
 
-- 保留第 22 节已有复核证据，将第 25 节首选从共同 Python 生产入口调整为真实 Torch C++ 扩展 metadata 分派；Python 负责配置、目标容量和调用侧保护。
-- 明确 P1 抽出共享 Host 核心与行为版本/覆盖校验，P2 在目标 Torch/CANN 工具链编译真正扩展及容量适配，P3 验证严格 golden/生命周期/槽位，P4 再支持 CSV 目标，P5 做设备验收。除设计文档更新外均未实施。
-- helper 和扩展共同编译同一份纯 C++ 核心；新扩展不启动 helper 子进程、不回调 Python provider，也不替换主 qfa。输出先按目标分配，C++ 写入前检查，返回原 output。
-- assets_explicit、metadata_api 备选与 extension_cpp 三种方案互斥；候选需验证包直调、dispatcher 与真实 C++ 导出入口，golden 不短路/不回退，保留原槽位行为。推荐命令待目标验收后再升级。
-- 明确 helper 不解析 CSV；现有用例参数已从 TTK 真实调用获取。CSV 目标配置、无需目标 JSON 的开关与冲突校验为待实现功能。
-- 本轮仅更新文档，未重新执行 CPU 测试，未修改运行代码、补丁或上游生产源码。以下测试结论仍为 2026-10-30 的基线证据。
+- 抽出 cpp/metadata_core.h/.cpp 和 metadata_adapter.h。helper 缩减为协议与文件 I/O；架构、分块和调度适配集中管理，helper 与扩展共同编译同一核心。
+- 核心支持显式 rowSize，按真实 section/核数校验容量，接受更大容量或足够的较小容量，剩余与第二行清零。补齐纯 C++ Header、FA/FD 覆盖、初始化、保留槽及工作区校验。
+- 新增真实类型化 MakeMetadataBinding 包装器，捕获原 native 指针；不修改原 native metadata、主 qfa 函数体与主绑定。mock 不调用原 metadata ACLNN、Python provider 或 helper 子进程，返回原 output。
+- Python 新模块负责配置/目标绑定、行容量、payload/扩展二进制身份与主 qfa 范围校验；不生产 metadata。扩展初版不缓存计划，worker 模式/目标固定，fork 后重新初始化。
+- 接入工具按 AST/唯一绑定和已知签名小范围修改，只有三个原文件变化：Torch C++ 绑定、Torch Python 构建/容量入口、setup 文件收集；原 assets 和 TTK 不改。支持 --check、幂等、逐字节撤销、编辑保护和旧补丁互斥。
+- build 保持不依赖 Git，必需文件强制全检；build_format=3 将编译依赖与 behavior_files/behavior_digest 分开。未知上游组合拒绝自动兼容；缓存、worker 和独立 bundle 均核对行为身份。
+- 已构建真实 vendor wheel 并校验嵌套核心/头文件/运行时/许可证/entry point/清单，同时嵌入原基础算子发现框架，避免 vendor wheel 缺少基础 COT 加载器。安装后不依赖开发仓库绝对路径。
+- 新增单 `.run` 组合与严格安装器：需要真实 CANN custom .run、匹配 wheel、同源声明和完整安装文件摘要；校验 vendor/架构/来源，逐项检查原生安装、独立进程检查 provider 并预热扩展，失败不报告成功。归档测试使用明确的 trap fixture，不将其作为原生包交付。
+- 新增 GoldenAudit 独立执行审计，不修改原 golden 或其 fallback；真实原函数回归证明“合法 metadata 但分段数值抛错后返回全局结果”可被审计拒绝。
 
-## 已实现基线
+## 本机验证
 
-- build 不调用 Git；按用户最新要求，强制检查编译头文件、assets/golden、AICPU 参考 cpp 的完整性，逐项列出所有缺失路径及用途，缺少任一项即失败，不提供跳过选项。实际编译指纹仍只包含真正引用的头文件和 helper。
-- 已在无 .git、路径含空格的完整源码副本编译并运行 helper，基线摘要正确；逐类删除头文件、assets/golden 或 AICPU cpp，均在调用编译器前失败并报告缺失项，旧产物保持不变。
-- 交付唯一的 patches/qfa_assets_mock.patch，修改三个测试资产。应用工具支持检查、重复应用、撤销，保留 LF/CRLF；无 Git 仓库的目录也可应用（需 git 可执行程序）。
-- impl/golden.py 传递显式分段计划，数值函数跳过设备 metadata 获取并直接传播异常；没有临时替换函数或异常桥接。
-- 预处理选择本地 metadata_builder，沿用原动态槽返回、零长占位、静态检查和 copy。配置缺省走 native，给定无效配置失败；其他量化模式提前拒绝。
-- 原 Spec 直接运行，主路径不导入旧 integrations/runtime_loader；worker 和请求整理提取为小型共享模块。
-- 平台离线记录/启动器降为旧兼容路径的工具，新主路径无需生成这些文件。目标由配置显式声明，已知容量冲突会失败，真实 tiling / Out / LSE 仍在目标环境验收。
+**63 项测试通过，0 失败、0 错误、0 跳过；260 个上游 Python 文件测试前后摘要不变。** 旧补丁与旧外置路径六组 Out/LSE 摘要仍逐项一致。详见 [verification_latest.json](docs/verification_latest.json)。
 
-## 已有验证（2026-10-30）
+另外用真实 CPU libtorch 编译同一个 C++ 包装器/核心，验证 PyBind 与 CPU dispatcher、native 指针/异常传播、模式切换拒绝、原 output 返回、较大容量、写入前错误拒绝；基线、FD、多 section 与独立 helper 逐字节一致。记录见 [cpp_bridge_verification.json](docs/cpp_bridge_verification.json)。该构建有显式 CPU acceptance 标记，生产运行时会拒绝将其当作 CANN 扩展。
 
-**55 项测试通过，0 失败、0 错误、0 跳过；260 个上游 Python 文件摘要不变。补丁与旧路径六组 Out/LSE 摘要逐项完全一致。**
+新接入与 wheel/安装归档仅在临时源码副本测试；没有给本地 ops-transformer 打生产补丁，也没有安装或替换原算子包。硬件探测见 [target_probe.json](docs/target_probe.json)：本机 Darwin/arm64，缺 torch_npu/CANN。
 
-- 补丁在临时复制的上游 assets 应用，不改本地原 assets 或 TTK。
-- 直接调用补丁后的原 Spec，执行基线、变长、padding、零长、FD、多 section 六组数值；mock 计划函数没有被测试替换。
-- 验证动态 metadata、(0,)、静态匹配/不匹配；双入口请求和计划一致；decoder/数值错误不调用原生 metadata 或全局参考。
-- 无配置时原计划入口及原预处理仍被选择。真实 TTK SpecLoader 发现原 Spec。
-- 保留旧外置方案与平台证据的兼容回归。完整测试结果与补丁/旧路径 Out/LSE 的逐项摘要比较见 [verification_latest.json](docs/verification_latest.json)。
+## R0—R5 状态
 
-## 使用与部署
+| 阶段 | 已完成 | 尚未完成 |
+|---|---|---|
+| R0 环境/契约 | 新设计同步、只读探测、槽位与容量规则 | 目标架构/有效核数、真实安装与 Runtime 探测 |
+| R1 共享核心 | 实现及 CPU/容量/损坏检测回归 | mk001 目标平台仍未确认 |
+| R2 同名包装 | 原函数保留、绑定/配置/容量/构建实现；真实 CPU libtorch 验证 | 目标 CANN 扩展、PrivateUse1 与真实主 qfa 路由验收 |
+| R3 单 .run | 真实 vendor wheel、载荷/组合工具、严格安装代码及归档检查 | 实际 CANN .run 构建输入、干净 Linux 安装/JIT与真实文件检查 |
+| R4 原 assets 回归 | 原 CPU golden/fallback 审计、旧槽位、互斥/来源与打包回归 | 新 CANN 扩展配合原 assets 的完整真实设备链路 |
+| R5 仿真精度 | 无目标运行结论 | H2D/stream、实际 tiling、AI Core Out/LSE；AICPU 对拍另记 |
 
-更新代码后重新 build helper，再执行 apply_assets_patch.py。设置 PYTHONPATH、QFA_METADATA_CONFIG、QFA_MOCK_HELPER，TTK 的 --plugin 指向目标项目原 assets。完整命令见 [ASSETS_USAGE.md](ASSETS_USAGE.md)。
-
-本地上游 assets 尚未自动打补丁，目标部署需要显式应用。源码不匹配时工具会失败，不应强行忽略。旧外置 ttk_plugin.py 不与新补丁叠加。
-
-## 尚待目标环境
-
-mk001 对应真实 SoC/架构/有效核数、实际 tiling、AICPU 对拍、H2D、AI Core 仿真 Out/LSE 精度仍需在目标机器完成。CPU 验证不能替代这些结论。首版仍是一次性输入、MXFP8 正向 Eager、D=128；未扩展历史 KV cache、YAML、持久化缓存或图模式。
-
-## 下一轮进度
-
-| 阶段 | 状态 |
-|---|---|
-| P0 C++ 接入设计、依赖与进度同步 | 文档已完成；目标扩展/Runtime 能力实测待做 |
-| P1 共享 Host 核心、行为版本检测与完整校验 | 待实现；当前仅有编译依赖摘要 |
-| P2 真 C++ 扩展分派、上下文/容量、OpBuilder 和构建清单 | 待实现；需要目标 Torch/CANN 工具链 |
-| P3 golden 严格失败、路由/生命周期/缓存/槽位验收 | 待实现；原 55 项测试不自动覆盖新扩展 |
-| P4 CSV 目标配置与来源冲突规则 | 待实现；当前仍需目标 JSON |
-| P5 Runtime、实际 tiling、Out/LSE | 待目标环境；AICPU 对拍另记 |
+CSV 目标嵌入、弱 hook/稳定插件、CANN Host-only executor C0、图模式、反向与历史 KV cache 均未实现，本轮没有以这些后续能力作为完成项。

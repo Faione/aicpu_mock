@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-30",
-  "scope": "mandatory source checks and build without Git, explicit assets patch (primary), legacy compatibility, real CPU hooks/golden and TTK SpecLoader",
+  "date": "2026-10-31",
+  "scope": "shared Host core and capacity validation, scoped extension integration, actual vendor wheel and bundle integrity, original assets CPU golden/fallback audit, legacy compatibility and TTK SpecLoader",
   "python": "3.12.16",
   "torch": "2.9.0",
   "numpy": "1.26.4",
-  "tests_run": 55,
+  "tests_run": 63,
   "failures": 0,
   "errors": 0,
   "skipped": 0,
@@ -537,12 +537,28 @@
     "ops-test-kit/ttk/utilities/views.py": "9b7b5f9e00250314719c94a082b7457bd5709b74957ce8bcaccbc32375fe34a0"
   },
   "helper_build": {
+    "adapter_version": "qfa-host-v2",
     "algorithm_version": "qfa-host-v1",
-    "binary_digest": "87fecc8c017dfb3c19ae2cc8cf8b0b1ca9bf12fb3059cd66c1e887b6338f4403",
-    "build_format": 2,
+    "behavior_digest": "2bb1158a2ebeeee3299607ea57e73a1c62e030524b74bca57ef6c738fc45a892",
+    "behavior_files": {
+      "attention/common/op_kernel/load_balance/base_info.h": "cfb8b46a7e63d3139326d2b07d34b1cd0185d883f00e42f1ba7a954972721cdd",
+      "attention/common/op_kernel/load_balance/load_balance_common.h": "f92f14469407fb0434bde6de07d65f632892a233b134654397157951deebb383",
+      "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k.h": "2352ea26150c09449e51378463f5aeb580506187ac69787934c31413cec5054f",
+      "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k_def.h": "5dde06c893f12eef0ade9285dd07ed942d2c436830f3856784b6c5dac5a9ab79",
+      "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k_impl.h": "bedf2cc4e709200c4572f0e3a7e280fd0057d3bfb23e802a9436444e8f518d1a",
+      "attention/quant_flash_attn/op_host/qfa_adjust_sinner_souter.h": "4610cb612f931f01ca9a10840fbd842ddc26d726644127741308733c24e887ef",
+      "attention/quant_flash_attn/tests/assets/quant_flash_attn_golden.py": "4426360cff883c364f899032d9ebe925b3e4a2c3665027436cdd59df0d1d58ee",
+      "attention/quant_flash_attn_metadata/op_kernel_aicpu/quant_flash_attn_metadata.h": "7d4cccc54e2a455263fd712c6135110a2743fd0bce222a7f6ecde783876b4372",
+      "attention/quant_flash_attn_metadata/op_kernel_aicpu/quant_flash_attn_metadata_aicpu.cpp": "5cc26714205ab2c424759282ad0749070439761cc50a536ae33c901e6faacd17"
+    },
+    "binary_digest": "93b51e5deab9d27b21767c685d37d40bad60c595ed4a863706303c4eab3967b9",
+    "build_format": 3,
     "compiler": "c++",
     "dependency_files": [
       "@helper",
+      "@mock/cpp/metadata_adapter.h",
+      "@mock/cpp/metadata_core.cpp",
+      "@mock/cpp/metadata_core.h",
       "attention/common/op_kernel/load_balance/base_info.h",
       "attention/common/op_kernel/load_balance/load_balance_common.h",
       "attention/common/op_kernel/load_balance/section_stream_k/section_stream_k.h",
@@ -553,7 +569,7 @@
     ],
     "protocol_version": 1,
     "repo": "/Users/fanghaolei/Workplace/agent/ops-transformer",
-    "source_digest": "b6801a12e0c9370e1f03a8db89f43635b7c934d5f10f9df835c26ca37cd9a7a8"
+    "source_digest": "ece8ec6e81702bde44b15f4fb4f773d044a7caf08a5269309a8883923abb9b4e"
   },
   "cpu_acceptance": {
     "slots": [
@@ -599,7 +615,7 @@
           0,
           0
         ],
-        "request_digest": "54a0d0076ed7e05b6cd65517e562311a3d1e79322aa5210233773c30c545d95e",
+        "request_digest": "d9945b3c6088759afb40731248f877a94b196137745c3b805a6587ae2e083bac",
         "metadata_digest": "e504413ef5b29d24d6742f588d70fa20e4909814605d6f9455fec20096139c9f",
         "out_shape": [
           128,
@@ -635,7 +651,7 @@
           0,
           0
         ],
-        "request_digest": "290a878740537aca066ead1e68b907a84e633b3089899c37b244480f3aa00136",
+        "request_digest": "4b9dfce43dfb2db9e898dadbb03dcce75d572ee7b3bc9f9bb80c87552717b0e9",
         "metadata_digest": "8a76f0128caa3fc5e5b689a30b27706c6f0d9dba12360f57eb2a7fcb845d1de8",
         "out_shape": [
           50,
@@ -671,7 +687,7 @@
           0,
           1
         ],
-        "request_digest": "c3acd7e3949906d0c1aad26f939eb810214fa36bde1f7ac4a58cedf7f35b0d5d",
+        "request_digest": "e328c805a73772a16fb19cdd414bfd331ef4a3eb3d2f6dd0ffc4da0dfa3cc58f",
         "metadata_digest": "b08a851c5d7b9c61dff9c08c62ee467ec2b131b7ec7937dacf143181b008941b",
         "out_shape": [
           32,
@@ -707,7 +723,7 @@
           0,
           0
         ],
-        "request_digest": "f02d11b83569b980afcb73d28692d37fee42c3312a20e2ec81d77d64ca8f9246",
+        "request_digest": "5f8a9c71c1ca1f9f476f63ef9b39ccf98a963608014277c99ad96dfe452730b6",
         "metadata_digest": "eca0a48a9cf2a007faecb2b54459c1e26d07e74381e77e9efce6de315f8b90da",
         "out_shape": [
           8,
@@ -743,7 +759,7 @@
           0,
           0
         ],
-        "request_digest": "943cb0cca797d9c0626e023dbe0f8fac73e9bbd68f792193f53ac177dac20dd4",
+        "request_digest": "3150c9c7498ae84c6051ee5c916f5a44d902d061fd888a5cb37c6d4a8aa37564",
         "metadata_digest": "d641648161bc083beea41d1d0e78346723772aea73c8595dc4da59913109fab9",
         "out_shape": [
           1,
@@ -779,7 +795,7 @@
           0,
           0
         ],
-        "request_digest": "a9db16e09ea4938628da0ea516af39c47f1988f737c8b1b92882264f39b95b6d",
+        "request_digest": "05e775aaa693a8c1c86d9567db4e5b77c31108984ba419bd8f7ed7b6acba79bf",
         "metadata_digest": "8ed789ab3ee8430c1ec498e318f9e78bef9b229e8036a6e9020fe2b5cd5099d6",
         "out_shape": [
           129,

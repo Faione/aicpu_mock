@@ -1,0 +1,40 @@
+{
+  "scope": "actual C++ bridge/core, CPU libtorch; CPU device boundary compile flag",
+  "records": [
+    {
+      "request": "request.json",
+      "row": 172032,
+      "sha256": "43ed8cd97fb77838c929db85cc0ab1ed52b5305f9497d04cb6b896e4da5d7bc8"
+    },
+    {
+      "request": "request_fd.json",
+      "row": 20480,
+      "sha256": "b77fa3a9b214256c534531c1b635a2c05387cfae60c22062200d7e2c974458f0"
+    },
+    {
+      "request": "request_multisection.json",
+      "row": 229376,
+      "sha256": "d9fcdbacab16182859f7d43373e490a5bb7f4744b6c212f9117a05d5643f6ed7"
+    }
+  ],
+  "cpu_dispatcher_route": true,
+  "same_output": true,
+  "larger_capacity": true,
+  "invalid_output_rejected": true,
+  "native_not_called_in_mock": true,
+  "real_cann_extension": "not_run",
+  "privateuse1": "not_run",
+  "h2d": "not_run",
+  "date": "2026-10-31",
+  "native_pointer": true,
+  "native_calls": 2,
+  "native_error_propagated": true,
+  "mode_change_rejected": true,
+  "source_sha256": {
+    "cpp/metadata_core.cpp": "5accff0698be6aa7b8d13328c72b8a0d25357359e92151044d1214f4ca57c77e",
+    "cpp/metadata_core.h": "3db5817744edb63612f13cf9d6fdcca753727e445ee4026080a79c42bb53b847",
+    "cpp/metadata_adapter.h": "871773be03f6beef2fd6d95d4ab52a9a289ea5f4036fc4aea1c4fa02ca37e3a2",
+    "cpp/torch/qfa_metadata_binding.cpp": "d597a642fbde44f4fe9eb9c78b95fd640e796a66d27cb9ed2a856b368a9a3d0e",
+    "cpp/torch/qfa_metadata_binding.h": "c1b9b233e798cfaf4f416da09c51c23a38a45456cfc4b29964cb82ff8243f0c5"
+  }
+}

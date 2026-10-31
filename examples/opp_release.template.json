@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "package_type": "cann_custom_run",
+  "sha256": "<SHA-256 of the actual CANN custom .run>",
+  "behavior_digest": "<SHA-256 of the corresponding wheel compatibility.json; must come from the same source build>",
+  "vendor": "qfamock",
+  "host_arch": "aarch64",
+  "kernel_arch": "arch92",
+  "installed_files": {
+    "op_api/lib/<actual-opapi-library.so>": "<actual-sha256>",
+    "op_impl/<all-tiling-kernel-and-config-files>": "<actual-sha256>"
+  },
+  "operators": ["quant_flash_attn", "quant_flash_attn_metadata"]
+}

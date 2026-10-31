@@ -1,12 +1,13 @@
 # QFA Mock AICPU 进度（2026-10-31）
 
-当前可部署基线为 eef4af5 的“一个 assets 补丁 + 共享 provider + Host helper”，旧零源码修改方案保留兼容。下一轮按主设计第 25 节及 [ITERATION_PLAN.md](docs/ITERATION_PLAN.md) 实施，第 23—24 节为其方案依据；共同接口尚未替换当前实现。
+当前可部署基线为 eef4af5 的“一个 assets 补丁 + 共享 provider + Host helper”，旧零源码修改方案保留兼容。下一轮按主设计第 25 节及 [ITERATION_PLAN.md](docs/ITERATION_PLAN.md) 实施，首选 extension_cpp，在 Torch 加载的真实 C++ 扩展中 mock metadata；第 23—24 节保留为 Python 入口备选，均未替换当前实现。
 
 ## 本轮计划更新（2026-10-31）
 
-- 同步外部主设计新增的第 22—24 节及独立状态文档，保留已有复核证据；新增第 25 节实施计划与独立副本。
-- 明确 P1 先拆分 helper 并补行为依赖身份，P2/P3 验证共同 Python metadata 接口与严格失败，P4 再支持 CSV 目标块，P5 完成目标环境验收。除 P0 文档同步外均未实施。
-- 将 assets_explicit 与 metadata_api 定为互斥部署方案；候选需真实验证包导出函数及 dispatcher 两条入口、golden 不短路/不回退，保留原槽位行为。未通过目标验收前不替换 README 的推荐命令。
+- 保留第 22 节已有复核证据，将第 25 节首选从共同 Python 生产入口调整为真实 Torch C++ 扩展 metadata 分派；Python 负责配置、目标容量和调用侧保护。
+- 明确 P1 抽出共享 Host 核心与行为版本/覆盖校验，P2 在目标 Torch/CANN 工具链编译真正扩展及容量适配，P3 验证严格 golden/生命周期/槽位，P4 再支持 CSV 目标，P5 做设备验收。除设计文档更新外均未实施。
+- helper 和扩展共同编译同一份纯 C++ 核心；新扩展不启动 helper 子进程、不回调 Python provider，也不替换主 qfa。输出先按目标分配，C++ 写入前检查，返回原 output。
+- assets_explicit、metadata_api 备选与 extension_cpp 三种方案互斥；候选需验证包直调、dispatcher 与真实 C++ 导出入口，golden 不短路/不回退，保留原槽位行为。推荐命令待目标验收后再升级。
 - 明确 helper 不解析 CSV；现有用例参数已从 TTK 真实调用获取。CSV 目标配置、无需目标 JSON 的开关与冲突校验为待实现功能。
 - 本轮仅更新文档，未重新执行 CPU 测试，未修改运行代码、补丁或上游生产源码。以下测试结论仍为 2026-10-30 的基线证据。
 
@@ -44,9 +45,9 @@ mk001 对应真实 SoC/架构/有效核数、实际 tiling、AICPU 对拍、H2D�
 
 | 阶段 | 状态 |
 |---|---|
-| P0 主设计、计划与进度同步 | 已完成文档；无新增运行证据 |
-| P1 helper 拆分、行为依赖与版本适配检测 | 待实现；当前仅有编译依赖摘要 |
-| P2 共同 Python metadata 接口候选 | 待实现；需扩大补丁至 Torch 扩展 Python 层 |
-| P3 golden 严格失败、双入口/请求/缓存/槽位验收 | 待实现；原 55 项测试不自动覆盖候选 |
+| P0 C++ 接入设计、依赖与进度同步 | 文档已完成；目标扩展/Runtime 能力实测待做 |
+| P1 共享 Host 核心、行为版本检测与完整校验 | 待实现；当前仅有编译依赖摘要 |
+| P2 真 C++ 扩展分派、上下文/容量、OpBuilder 和构建清单 | 待实现；需要目标 Torch/CANN 工具链 |
+| P3 golden 严格失败、路由/生命周期/缓存/槽位验收 | 待实现；原 55 项测试不自动覆盖新扩展 |
 | P4 CSV 目标配置与来源冲突规则 | 待实现；当前仍需目标 JSON |
 | P5 Runtime、实际 tiling、Out/LSE | 待目标环境；AICPU 对拍另记 |

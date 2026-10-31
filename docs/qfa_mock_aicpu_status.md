@@ -107,8 +107,19 @@ YAML、持久化缓存、历史 KV cache 与图模式未纳入本轮实现。
 
 ## 下一轮实施计划（2026-10-31，仅文档）
 
-主设计第 25 节已把入口收敛、版本漂移和 CSV 参数来源整理为 P0—P5：P0 同步计划已完成；P1 helper 拆分与行为依赖身份、P2 共同 Python 接口、P3 严格 golden/请求/槽位回归、P4 CSV 目标配置均待实现；P5 为目标 Runtime、实际 tiling 和 Out/LSE 验收。AICPU 同配置对拍继续单列。
+主设计第 25 节已按用户最新决策调整为 extension_cpp：在 Torch 加载的真实 C++ 扩展 metadata 函数内选择 native/mock，保留主 qfa；helper 与扩展共同编译同一 Host 核心，扩展不启动 helper 子进程、不回调 Python provider。Python 仅作配置、容量和调用侧保护；第 23—24 节的共同 Python 生产入口降为备选。
 
-现有三文件补丁仍是可部署基线，统一接口候选不能叠加使用；55 项 CPU 记录不能直接作为候选方案或设备验收。版本检测当前只覆盖实际编译依赖，AICPU cpp/decoder 的行为变化检测尚待 P1。现有用例参数已来自 TTK 实际调用；CSV 目标块和无需目标 JSON 的启用方式尚未支持，helper 不解析 CSV。
+| 阶段 | 当前状态 |
+|---|---|
+| P0 设计/依赖与进度更新 | 文档已同步，目标环境实测未做 |
+| P1 共享 Host 核心与版本/覆盖校验 | 待实现，可在普通 CPU 环境推进 |
+| P2 真 C++ 扩展分派、容量适配、构建清单 | 待实现，需要目标 Torch/CANN 工具链 |
+| P3 严格 golden、路由/槽位/生命周期、补丁互斥 | 待实现 |
+| P4 CSV 目标绑定 | 待实现，当前仍需目标 JSON |
+| P5 Runtime、实际 tiling 与 Out/LSE | 待目标环境，AICPU 对拍另记 |
 
-计划副本：[ITERATION_PLAN.md](/Users/fanghaolei/Workplace/agent/aicore_mock/docs/ITERATION_PLAN.md)。当前 README 命令不变。
+已交付的三文件 assets_explicit 仍是当前部署基线；与 extension_cpp 及 Python metadata_api 备选互斥。2026-10-30 的 55 项 CPU 记录不覆盖新扩展，不能证明新的二进制已编译、加载或设备已验收。本轮没有改动运行代码、补丁或生产源码，也未重跑测试。
+
+新方案的 Python 输出必须先按目标核数分配；C++ 写入前检查精确 shape/dtype/device/连续性，返回同一个 output。native 保留原 metadata ACLNN；mock 计算失败不回退。TTK 不改，--plugin 仍是原 assets，主 qfa 仍执行真实 AI Core。
+
+计划副本：[ITERATION_PLAN.md](/Users/fanghaolei/Workplace/agent/aicore_mock/docs/ITERATION_PLAN.md)。当前 README 部署命令不变，未来扩展需按目标项目已有构建链重新编译/安装。
